@@ -1,0 +1,4 @@
+npc_id,key,value,visibility
+G001,shift_preference,Prefers day shifts,public
+S001,preferred_items,Recommends supply bundles,public
+R001,policy_emphasis,Strict on ID check-in,public

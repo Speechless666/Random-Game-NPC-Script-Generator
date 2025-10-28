@@ -1,0 +1,23 @@
+emotions:
+  - neutral
+  - friendly
+  - cheerful
+  - serious
+  - annoyed
+  - sad
+
+transforms:
+  neutral:  ["calm", "plain"]
+  friendly: ["warm"]
+  cheerful: ["happy", "upbeat"]
+  serious:  ["formal", "stern"]
+  annoyed:  ["irritated", "grumpy"]
+  sad:      ["down", "blue"]
+
+allowed_transitions:
+  neutral:  [friendly, serious]
+  friendly: [neutral, cheerful]
+  cheerful: [friendly]
+  serious:  [neutral, annoyed]
+  annoyed:  [serious]
+  sad:      [neutral]
