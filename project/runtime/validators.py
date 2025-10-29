@@ -2,6 +2,17 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Set
 
+EMOTION_SCHEMA_OPTIONAL_KEYS = {"labels", "triggers", "content", "tone_map"}
+
+def validate_emotion_schema(doc: Dict[str, Any]) -> None:
+    """Allow runtime optional keys to exist without raising errors.
+    Keep your original mandatory checks elsewhere (if any)."""
+    if not isinstance(doc, dict):
+        raise ValidationError("emotion_schema must be a mapping")
+    # Merely access these keys to signal 'allowed to exist'
+    for k in EMOTION_SCHEMA_OPTIONAL_KEYS:
+        _ = doc.get(k, None)
+
 VIS_SET = {"public", "secret"}
 
 class ValidationError(Exception):
@@ -153,3 +164,4 @@ class Validators:
         for r in npcs:
             at = set(parse_json_list_forgiving(r["allowed_tags"]))
             self._ensure(at.issubset(lore_tags), f"npc.{r['npc_id']} allowed_tags contain unknown tags: {at - lore_tags}")
+
