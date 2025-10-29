@@ -1,50 +1,82 @@
 # slots.yaml
-# Minimal, broad descriptions for routing only.
-# They do not constrain what evidence can be used—filters & retriever still decide that.
+# Routing-only: keep must/forbid aligned to your single-tag taxonomy.
 
 slots:
-  market_query:
-    description: "ask about the market, vendors, stalls, prices, tariffs, trade news"
-    must: ["market"]                    # 宽口径：玩家未提到 market 时，qrouter_v2 会用实体/PRF补种子
-    forbid: ["secret_price", "black_market", "smuggling"]
-    tone_guidelines: ["helpful", "concise"]
-
-  trade_banter:
-    description: "buying or selling, bargaining for a deal, haggling with shopkeepers or stalls"
-    # keep must empty to stay broad
-    must: []
-    forbid: ["secret_price", "bribe"]
-    tone_guidelines: ["lively", "streetwise"]
-
-  patrol_info:
-    description: "patrol or guard watch topics: shifts, rounds, routes, gates such as the east or west gate"
-    # 不强制 must；由实体（如 East Gate）或 PRF 触发匹配
-    must: []
-    forbid: ["patrol schedule"]         # 与过滤器配合：敏感细节将被拒
-    tone_guidelines: ["cautious", "vague_on_sensitive"]
-
   small_talk:
-    description: "greetings and casual chit-chat such as hello, how are you, how's your day"
+    description: "greetings and light chit-chat (how's your day / nice weather)"
     must: []
     forbid: []
     tone_guidelines: ["friendly", "casual"]
 
-  past_story:
-    description: "asking about the character's earlier days, rookie years, or old events back then"
-    must: []
+  directions:
+    description: "ask where a place is or how to get there (beach, plaza, saloon, ranch)"
+    must: ["place"]
+    forbid: ["secret_area", "residence"]
+    tone_guidelines: ["helpful", "concise"]
+
+  festival_info:
+    description: "ask about seasonal festivals and town events (egg festival, luau, fair, winter star)"
+    must: ["event"]
     forbid: []
-    tone_guidelines: ["nostalgic", "reflective"]
+    tone_guidelines: ["cheerful", "informative"]
+
+  shop_info:
+    description: "ask what a shop offers or general opening/usage (saloon, joja, blacksmith)"
+    must: ["store"]
+    forbid: []
+    tone_guidelines: ["helpful", "neutral"]
+
+  trade_banter:
+    description: "buying or selling vibe with shopkeepers (what to get, quick tips)"
+    must: ["store"]
+    forbid: []
+    tone_guidelines: ["lively", "brief", "practical"]
+
+  work_shift_info:
+    description: "ask about work routines or tasks (e.g., JojaMart shifts)"
+    must: ["work"]
+    forbid: ["residence"]
+    tone_guidelines: ["matter_of_fact", "brief"]
+
+  music_chat:
+    description: "talk about band practice, guitar, rehearsals"
+    must: ["hobby"]
+    forbid: []
+    tone_guidelines: ["enthusiastic", "encouraging"]
+
+  camp_life:
+    description: "talk about foraging, simple living, campfire habits"
+    must: ["nature"]
+    forbid: ["secret_area"]
+    tone_guidelines: ["calm", "reflective"]
+
+  community_center:
+    description: "ask about gatherings and community use of the center"
+    must: ["community"]
+    forbid: []
+    tone_guidelines: ["warm", "civic"]
 
   daily_status:
-    description: "what the NPC is doing today, current shift or tasks, immediate plans"
+    description: "what the NPC is doing today, current task or immediate plan"
     must: []
     forbid: []
-    tone_guidelines: ["present-tense", "brief"]
+    tone_guidelines: ["present_tense", "brief"]
 
   personal_pref:
-    description: "likes, dislikes, tastes, favorite things or preferred places"
+    description: "likes/dislikes, favorite spots or small personal tastes"
     must: []
-    forbid: []
+    forbid: ["residence", "storage"]
     tone_guidelines: ["personal", "light"]
 
-# 可在此处逐步添加更多槽位；保持描述为自然语言的一句话即可，便于 TF-IDF 路由。
+  past_story:
+    description: "older memories or earlier days (short, gentle anecdotes)"
+    must: []
+    forbid: ["residence", "secret_area"]
+    tone_guidelines: ["nostalgic", "soft"]
+
+  privacy_guard:
+    description: "requests that probe private spaces/items (home rooms, chests, hidden groves)"
+    must: []
+    forbid: ["residence", "storage", "secret_area"]
+    tone_guidelines: ["polite_refusal", "brief"]
+
