@@ -1,19 +1,19 @@
 fact_id,entity,fact,tags,visibility
-SVL001,Shane's Room,Shane lives in a small room at Marnie’s Ranch, often retreating there after work.,"farm, home",public
-SVL002,JojaMart,Shane works part-time at JojaMart, though he prefers caring for animals.,"town, work",public
-SVL003,Town Tavern,Shane frequently visits the tavern in the evenings, ordering pizza and drinks.,"food, town",public
-SVL004,Sam's House,Sam lives with his mother Jodi and younger brother Vincent in Pelican Town.,"family, home",public
-SVL005,Town Plaza,Sam often skateboards here and plays guitar with friends.,"town, hobby",public
-SVL006,Local Band Room,Sam rehearses here with his band, dreaming of becoming a musician.,"music, hobby",public
-SVL007,Linus's Tent,Linus resides in a tent near the mountains, living close to nature.,"mountain, home",public
-SVL008,Forest Clearing,Linus spends time here foraging wild plants and teaching survival knowledge.,"nature, hobby",public
-SVL009,Campfire Spot,Linus often sits by the firepit near his tent, reflecting on life.,"mountain, wisdom",public
-SVL010,Community Center,Many villagers gather here during events once it is restored.,"town, events",public
-SVL011,Egg Festival,This spring festival is held in the town square; Shane, Sam, and Linus all attend.,"festival, town",public
-SVL012,Luau Festival,The summer Luau at the beach brings villagers together, including Shane, Sam, and Linus.,"festival, beach",public
-SVL013,Stardew Valley Fair,This autumn fair in Pelican Town features games and contests where all villagers gather.,"festival, town",public
-SVL014,Winter Star Festival,A winter celebration where villagers exchange gifts; Shane, Sam, and Linus participate.,"festival, town",public
-SVS015,Farmer's House,The main farmhouse belongs to the player and is located on the farm south of the mountains.,"farm, home",secret
-SVS016,Player's Bedroom,The private room of the farmer; details are not usually shared with others.,"farm, private",secret
-SVS017,Player's Chest,The storage chests inside the farmhouse hold personal belongings and valuables.,"farm, storage",secret
-SVS018,Secret Woods,A hidden grove the farmer often explores, known only to a few.,"forest, secret",secret
+SVL001,Shane's Room,"Shane rests in a small room at Marnie’s Ranch, often returning there after work.",residence,public
+SVL002,JojaMart,"Shane works part-time at JojaMart.",work,public
+SVL003,Stardrop Saloon,"Shane often visits the saloon in the evening for pizza and drinks.",store,public
+SVL004,Sam's House,"Sam lives with his mother Jodi and younger brother Vincent in Pelican Town.",residence,public
+SVL005,Town Plaza,"Sam skateboards and plays guitar with friends at the town plaza.",place,public
+SVL006,Band Rehearsal Room,"Sam rehearses with his band and dreams of becoming a musician.",hobby,public
+SVL007,Linus's Tent,"Linus lives in a tent near the mountains, close to nature.",residence,public
+SVL008,Forest Clearing,"Linus forages wild plants and shares basic survival tips.",nature,public
+SVL009,Campfire Spot,"Linus often sits by the campfire near his tent, reflecting quietly.",place,public
+SVL010,Community Center,"After restoration, villagers gather here for town events.",community,public
+SVL011,Egg Festival,"The spring Egg Festival is held in the town square; Shane, Sam, and Linus attend.",event,public
+SVL012,Luau,"The summer Luau at the beach brings everyone together; Shane, Sam, and Linus attend.",event,public
+SVL013,Stardew Valley Fair,"The autumn fair in Pelican Town features games and showcases; villagers gather there.",event,public
+SVL014,Feast of the Winter Star,"A winter gift-exchange festival attended by Shane, Sam, and Linus.",event,public
+SVS015,Farmer's House,"The farmhouse is on the farm south of the mountains and is private to the farmer.",residence,private
+SVS016,Farmer's Bedroom,"The farmer’s bedroom is personal space and details aren’t shared publicly.",residence,private
+SVS017,Farmhouse Chest,"Storage chests in the farmhouse hold the farmer’s personal belongings.",storage,private
+SVS018,Secret Woods,"A secluded forest clearing known only to a few.",secret_area,private
