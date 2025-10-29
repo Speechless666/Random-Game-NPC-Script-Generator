@@ -12,9 +12,7 @@ import sys
 import traceback
 
 # -----------------------------
-# Robust imports for two modes:
-# 1) Preferred:  python -m runtime.controller   (package mode)
-# 2) Fallback:   python runtime/controller.py   (script mode, not recommended)
+# Robust imports for -m runtime.controller
 # -----------------------------
 if __package__ in (None, ""):
     THIS = Path(__file__).resolve()
@@ -30,6 +28,7 @@ if __package__ in (None, ""):
     except Exception:
         filters_mod = None
         HAS_FILTERS = False
+    from runtime.config import SETTINGS
 else:
     from . import qrouter as qrouter
     from . import retriever
@@ -40,18 +39,18 @@ else:
     except Exception:
         filters_mod = None
         HAS_FILTERS = False
+    from .config import SETTINGS
 
 # -------------------
-# Project locations
+# Paths
 # -------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CACHE_DIR    = PROJECT_ROOT / "runtime" / ".cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
 COMPILED_PATH = CACHE_DIR / "compiled.json"
 
 # ---------------------------------
-# Fallback demo lore (for testing)
+# DEV-only demo data (guarded)
 # ---------------------------------
 DEMO_LORE_PUBLIC: List[Dict[str, Any]] = [
     {"fact_id": "L001", "entity": "City Wall",    "tags": "city, security", "fact": "Obsidian-reinforced walls with night lamps along the parapet.", "visibility": "public"},
@@ -67,22 +66,28 @@ DEMO_ALLOWED_ENTITIES = [
 ]
 
 def load_compiled() -> Dict[str, Any]:
+    """
+    生产/严格：必须已有 runtime/.cache/compiled.json；缺失直接报错。
+    开发+ALLOW_DEMO：允许使用内置 DEMO_*（仅内存，不落盘）。
+    """
     if COMPILED_PATH.exists():
         try:
-            data = json.loads(COMPILED_PATH.read_text(encoding="utf-8"))
-            if "allowed_entities" not in data:
-                data["allowed_entities"] = DEMO_ALLOWED_ENTITIES
-            if "lore_public" not in data:
-                data["lore_public"] = DEMO_LORE_PUBLIC
-            return data
-        except Exception:
-            print("[controller] compiled.json parse error — using demo fallback", file=sys.stderr)
-    data = {"allowed_entities": DEMO_ALLOWED_ENTITIES, "lore_public": DEMO_LORE_PUBLIC}
-    try:
-        COMPILED_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:
-        pass
-    return data
+            return json.loads(COMPILED_PATH.read_text(encoding="utf-8"))
+        except Exception as e:
+            print("[controller] ERROR: compiled.json parse error:", e, file=sys.stderr)
+            if SETTINGS.PRODUCTION or SETTINGS.STRICT_COMPILED:
+                raise
+
+    if SETTINGS.ALLOW_DEMO:
+        print("[controller] WARN: compiled.json missing — using DEMO data (DEV only).", file=sys.stderr)
+        return {
+            "allowed_entities": DEMO_ALLOWED_ENTITIES,
+            "lore_public": DEMO_LORE_PUBLIC,
+        }
+
+    raise RuntimeError(
+        "compiled.json not found. Run team-A compiler (compile_data.py) to produce runtime/.cache/compiled.json"
+    )
 
 # ----------------------------
 # Optional: filters invocation
@@ -132,14 +137,6 @@ class MODEL_PLACEHOLDER:
 # Auto slot bias (no preset required)
 # ----------------------------
 def _auto_slot_bias(slot_name: str, router: Dict[str, Any]) -> Dict[str, float]:
-    """
-    Automatic prior when no SLOT_TONE_BIAS is configured:
-    - Greeting/thanks + no MUST → friendly/cheerful
-    - Sensitive (schedule/secret/black etc.) → serious
-    - Market/trade words → friendly/neutral
-    - Low-confidence route (<0.35) → neutral/friendly
-    - Else → serious/neutral
-    """
     text = (router.get("text_norm") or "").lower()
     must = set(router.get("must") or [])
     forbid = set(router.get("forbid") or [])
@@ -160,7 +157,7 @@ def _auto_slot_bias(slot_name: str, router: Dict[str, Any]) -> Dict[str, float]:
         return {"neutral": 0.6, "friendly": 0.4}
     return {"serious": 0.7, "neutral": 0.3}
 
-# Optional manual bias (can be left empty; auto bias will fill)
+# 可选：手工 bias；留空也没事（会自动推断）
 SLOT_TONE_BIAS: Dict[str, Dict[str, float]] = {
     # "small_talk":   {"friendly": 0.85, "cheerful": 0.15},
     # "market_query": {"friendly": 0.70, "neutral": 0.30},
@@ -171,15 +168,6 @@ SLOT_TONE_BIAS: Dict[str, Dict[str, float]] = {
 # Single-turn pipeline
 # ----------------------------
 def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
-    """
-    End-to-end single turn:
-      1) qrouter.prepare → slot, must/forbid/tags, normalized text
-      2) filters? → deny early (if taboo/secret)
-      3) retriever → public evidence (small_talk skips retrieval)
-      4) emotion pre → hint/style (uses manual bias if exists; otherwise auto)
-      5) mock generate → draft
-      6) emotion post → align (fallback if zero-signal neutral)
-    """
     out: Dict[str, Any] = {"slot": None, "router": {}, "filters": None, "retriever": {}, "emotion": {}, "draft": ""}
 
     compiled = load_compiled()
@@ -191,12 +179,11 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     slot_name = q["slot"]
     out["slot"] = slot_name
 
-    # (2) filters (soft)
+    # (2) filters
     filt = run_filters_guard(user_text, npc_id, compiled)
     out["filters"] = filt
     if isinstance(filt, dict) and (not filt.get("allow", True)):
         out["draft"] = filt.get("reply") or "Sorry, I can’t speak to that."
-        # still provide emotion hint
         slot_bias = SLOT_TONE_BIAS.get(slot_name) or _auto_slot_bias(slot_name, q)
         emo_ctx = {
             "user_text": user_text,
@@ -220,7 +207,7 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
         out["emotion"] = {"pre": pre, "post": None, "final": pre["emotion_hint"], "style": pre["style_hooks"]}
         return out
 
-    # (3) retrieve (small_talk skips)
+    # (3) retrieve（small_talk 跳过检索）
     slot_hints = {"must": q["must"], "forbid": q["forbid"], "tags": q.get("tags", [])}
     route_conf = q.get("route_confidence", 0.0)
     relaxed = (slot_name == "small_talk") or (route_conf < 0.35)
@@ -228,6 +215,8 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     if slot_name == "small_talk":
         r = {"flags": {"insufficient": True}, "evidence": [], "audit": {"must": [], "forbid": []}}
     else:
+        if not compiled_lore_public and (SETTINGS.PRODUCTION or SETTINGS.STRICT_COMPILED):
+            raise RuntimeError("[controller] lore_public missing. Ensure compiled.json provides 'lore_public'.")
         r = retriever.retrieve_public_evidence(
             user_text=q["text_norm"],
             npc_id=npc_id,
@@ -239,7 +228,7 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     out["retriever"] = r
     evidence = r.get("evidence", []) if isinstance(r, dict) else []
 
-    # (4) emotion pre (manual bias if any; otherwise auto)
+    # (4) emotion pre
     slot_bias = SLOT_TONE_BIAS.get(slot_name) or _auto_slot_bias(slot_name, q)
     emo_ctx = {
         "user_text": user_text,
@@ -262,7 +251,6 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     }
     pre = emotion_engine.pre_hint(emo_ctx)
 
-    # cold fix: if small_talk still neutral, lift to friendly
     if slot_name == "small_talk" and pre.get("emotion_hint") == "neutral":
         pre["emotion_hint"] = "friendly"
         pre["style_hooks"] = emotion_engine.realize_style("friendly", emo_ctx["npc_profile"]["style_emotion_map"])
@@ -281,7 +269,6 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     # (6) emotion post + zero-signal neutral fallback
     post = emotion_engine.post_infer(draft, emo_ctx)
     post_conf = float(post.get("confidence", 0.0) or 0.0)
-
     post_dbg = (post.get("debug") or {})
     raw = (post_dbg.get("raw_scores") or {})
     degenerate_neutral = (
@@ -289,7 +276,6 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
         (raw.get("neutral", 0.0) == 1.0) and
         (abs(sum(raw.values()) - 1.0) < 1e-9)
     )
-
     if degenerate_neutral or (post_conf < 0.55):
         final_em = pre["emotion_hint"]
     else:
@@ -299,40 +285,3 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     out["emotion"] = {"pre": pre, "post": post, "final": final_em, "style": style}
 
     return out
-
-# ----------------------------
-# Smoke tests
-# ----------------------------
-def run_smoke_tests() -> None:
-    tests = [
-        "what's new in the market?",
-        "any news from the marketplace guild?",
-        "tell me about patrol shifts near the east gate",
-        "hi there, how's your day?",
-        "where's the black market tonight?",
-    ]
-    for t in tests:
-        print("\n============================================================")
-        print("USER:", t)
-        try:
-            res = run_once(t, npc_id="S001")
-            router = res.get("router", {})
-            retr  = res.get("retriever", {})
-            emo   = res.get("emotion", {})
-            print("[slot]", res.get("slot"), "| route_conf:", router.get("route_confidence"))
-            print("[router.must]", router.get("must"), "| forbid:", router.get("forbid"))
-            print("[retriever.flags]", retr.get("flags"))
-            print("[evidence.top2]", (retr.get("evidence") or [])[:2])
-            print("[draft]", res.get("draft"))
-            print("[emotion.final]", emo.get("final"), "| style:", emo.get("style"))
-            pre_dbg = (emo.get("pre") or {}).get("debug") or {}
-            print("[emotion.pre.scores]", pre_dbg.get("scores"))
-            print("[emotion.pre.strong_bypass]", pre_dbg.get("strong_trigger_bypass"))
-        except Exception as e:
-            print("[ERROR]", e)
-            traceback.print_exc()
-
-if __name__ == "__main__":
-    # run from project root:
-    #   python -m runtime.controller
-    run_smoke_tests()

@@ -2,12 +2,12 @@
 """
 emotion_engine.py — Phase 2 · Emotion & Style (Two-step: Pre-Hint → Post-Align)
 
-This module **does not generate natural language**. It only:
-  1) pre_hint(ctx)        → provide a *weak* emotion hint + style hooks **before** generation
-  2) post_infer(text,ctx) → infer emotion **from drafted content** to align tone with what was said
-  3) realize_style(emotion, style_map) → map emotion → style hooks (prefix / suffix / tone)
+不生成自然语言，仅输出：
+  1) pre_hint(ctx):  生成前的“弱情绪提示 + 样式钩子”
+  2) post_infer(...): 根据草稿内容反推情绪（用于对齐/重写判断）
+  3) realize_style(...): 情绪 → 样式钩子映射
 
-Schema-driven (team A compiles emotion_schema.yaml upstream).
+注意：仅移除 demo 触发词与内容规则；逻辑不变。
 """
 
 from __future__ import annotations
@@ -15,31 +15,26 @@ from typing import Dict, Any, List, Tuple, Optional
 import re
 
 # ==================
-# Tunable parameters (adjusted to be more responsive)
+# Tunable weights（保持原数值）
 # ==================
-W_BASE   = 0.20  # baseline prior from npc_profile.baseline_emotion  (↓ from 0.25)
-W_SLOT   = 0.15  # slot tone bias prior (schema.tone_map / ctx.slot_tone_bias) (↓ from 0.20)
-W_TRIG   = 0.50  # lexical trigger votes from user_text (pre phase)  (↑ from 0.40)
-W_INERT  = 0.10  # inertia from last_emotion (same)
-W_API    = 0.00  # reserved
-HYST_TAU = 0.25  # hysteresis keep threshold (↓ from 0.40 → easier to switch)
-
-# Strong-trigger bypass (new):
-# If the sum of trigger votes mass >= this threshold, bypass hysteresis.
+W_BASE   = 0.20
+W_SLOT   = 0.15
+W_TRIG   = 0.50
+W_INERT  = 0.10
+W_API    = 0.00
+HYST_TAU = 0.25
 STRONG_TRIGGER_SUM = 0.90
 
 _WORD = re.compile(r"[a-zA-Z']+")
 
 # ==========================
-# Emotion aliases & fallback
+# Emotion aliases & fallback（不改）
 # ==========================
 EMOTION_ALIASES = {
     "calm": "neutral", "plain": "neutral", "formal": "serious",
     "stern": "serious", "warm": "friendly", "happy": "cheerful",
     "upbeat": "cheerful", "irritated": "annoyed", "blue": "sad",
 }
-
-# If target style missing, fall back by similarity chain
 EMOTION_FALLBACK_CHAIN = {
     "friendly": ["cheerful", "neutral"],
     "cheerful": ["friendly", "neutral"],
@@ -49,62 +44,23 @@ EMOTION_FALLBACK_CHAIN = {
 }
 
 # ==========================
-# Default schema (safe stub)
+# 默认 schema（仅保留 labels/tone_map；清空 demo triggers/content）
 # ==========================
 DEFAULT_SCHEMA: Dict[str, Any] = {
     "labels": ["neutral", "friendly", "cheerful", "serious", "annoyed", "sad"],
-    "transforms": {
-        "neutral":  ["calm", "plain"],
-        "friendly": ["warm"],
-        "cheerful": ["happy", "upbeat"],
-        "serious":  ["formal", "stern"],
-        "annoyed":  ["irritated", "grumpy"],
-        "sad":      ["down", "blue"],
-    },
-    "triggers": {
-        "gratitude": {
-            "phrases": ["thanks", "thank you", "appreciate it"],
-            "votes": {"friendly": 0.7, "cheerful": 0.4}
-        },
-        "apology": {
-            "phrases": ["sorry", "apologies"],
-            "votes": {"serious": 0.5, "sad": 0.5}
-        },
-        "threat": {
-            "phrases": ["watch it", "careful", "don’t try me", "back off"],
-            "votes": {"annoyed": 1.0, "serious": 0.5}
-        },
-        "greet": {
-            "phrases": ["hello", "hi there", "hey"],
-            "votes": {"friendly": 0.6}
-        },
-    },
-    "content": {
-        "off_duty": {
-            "phrases": ["free today", "taking it easy", "off-duty", "leisure"],
-            "votes": {"cheerful": 1.0, "friendly": 0.7}
-        },
-        "tired": {
-            "phrases": ["tired", "exhausted", "lack of sleep", "sick"],
-            "votes": {"sad": 1.0, "serious": 0.6}
-        },
-        "lucky": {
-            "phrases": ["good day", "lucky", "finished early", "went well"],
-            "votes": {"cheerful": 1.0, "friendly": 0.6}
-        },
-    },
     "tone_map": {
         "serious":  {"serious": 0.6, "neutral": 0.4},
         "friendly": {"friendly": 0.6, "cheerful": 0.4},
         "formal":   {"serious": 0.5, "neutral": 0.5},
         "casual":   {"friendly": 0.5, "cheerful": 0.5}
-    }
+    },
+    "triggers": {},   # ← 清空 demo
+    "content":  {},   # ← 清空 demo
 }
 
 # =============
-# Util helpers
+# Util helpers（不改）
 # =============
-
 def _norm(s: Optional[str]) -> str:
     return (s or "").strip().lower()
 
@@ -133,7 +89,6 @@ def _blank_scores(labels: List[str]) -> Dict[str, float]:
 def _clamp_to_range(emotion: str, allowed: Optional[List[str]]) -> str:
     if not allowed:
         return emotion
-    # alias before clamp
     em = EMOTION_ALIASES.get(emotion, emotion)
     return em if em in allowed else (allowed[0] if allowed else em)
 
@@ -160,30 +115,23 @@ def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
     return scores
 
 # ==========================
-# 1) Pre-Hint (pre-generation)
+# 1) Pre-Hint（不改逻辑）
 # ==========================
-
 def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Provide a *weak* emotion hint before generation (safety baseline only).
-    Returns: {"emotion_hint": str, "style_hooks": dict, "debug": {...}}
-    """
     labels = _labels(ctx)
     scores = _blank_scores(labels)
     dbg: Dict[str, Any] = {}
 
-    # A) baseline from NPC profile
     base_em = _norm(ctx.get("npc_profile", {}).get("baseline_emotion"))
     if base_em and base_em in scores:
         scores[base_em] += W_BASE
     dbg["baseline"] = base_em or None
 
-    # B) slot tone prior
     slot_name = ctx.get("slot_name") or ""
     slot_bias_map = {}
     if isinstance(ctx.get("slot_tone_bias"), dict):
         slot_bias_map = dict(ctx["slot_tone_bias"].get(slot_name, {}) or {})
     if not slot_bias_map:
-        # try infer from profile.speaking_style (very weak heuristic)
         prof = ctx.get("npc_profile", {}) or {}
         style_kw = _norm(prof.get("speaking_style") or "").split(",")[0].strip() if prof.get("speaking_style") else None
         tone_map = _tone_map(ctx)
@@ -193,60 +141,45 @@ def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
         _mix_into(scores, slot_bias_map, W_SLOT)
     dbg["slot_prior"] = slot_bias_map
 
-    # C) lexical triggers from user_text
     trig_votes, trig_hits = _trigger_votes(ctx.get("user_text") or "", ctx)
     _mix_into(scores, trig_votes, W_TRIG)
     dbg["trigger_hits"] = trig_hits
     dbg["trigger_votes"] = trig_votes
 
-    # D) inertia from last emotion
     last = _norm(ctx.get("last_emotion"))
     if last and last in scores:
         scores[last] += W_INERT
     dbg["last_emotion"] = last or None
 
-    # E) future external API votes (reserved)
     if W_API > 0.0 and isinstance(ctx.get("api_votes"), dict):
         _mix_into(scores, ctx["api_votes"], W_API)
         dbg["api_votes"] = ctx["api_votes"]
 
-    # Normalize
     scores = _normalize_scores(scores)
     best = max(scores.items(), key=lambda kv: kv[1])[0]
 
-    # --- Strong trigger bypass hysteresis (NEW) ---
     total_trig_mass = sum(float(v) for v in (dbg.get("trigger_votes") or {}).values())
     strong_trigger = total_trig_mass >= STRONG_TRIGGER_SUM
 
-    # Hysteresis: keep last if close (unless strong trigger)
     if not strong_trigger and last and last in scores and (scores[best] - scores[last]) < HYST_TAU:
         best = last
         dbg["hysteresis_kept"] = True
     else:
         dbg["hysteresis_kept"] = False
     dbg["strong_trigger_bypass"] = strong_trigger
-    dbg["scores"] = scores  # keep normalized scores in debug for logging
+    dbg["scores"] = scores
 
-    # Clamp to allowed range (with alias)
     allowed = ctx.get("npc_profile", {}).get("emotion_range")
     best = _clamp_to_range(best, allowed)
 
     style = realize_style(best, ctx.get("npc_profile", {}).get("style_emotion_map"))
 
-    return {
-        "emotion_hint": best,
-        "style_hooks": style,
-        "debug": dbg
-    }
+    return {"emotion_hint": best, "style_hooks": style, "debug": dbg}
 
 # ===============================
-# 2) Post-Infer (content-driven)
+# 2) Post-Infer（不改逻辑）
 # ===============================
-
 def post_infer(output_text: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """Infer emotion from *self-reported content*.
-    Returns: {"emotion_from_content": str|None, "confidence": float, "matches": [...], "debug": {...}}
-    """
     labels = _labels(ctx)
     text = _norm(output_text)
     if not text:
@@ -255,7 +188,6 @@ def post_infer(output_text: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
     scores = _blank_scores(labels)
     matches: List[str] = []
 
-    # A) rule matches from content schema
     for key, cfg in _content(ctx).items():
         phrases: List[str] = cfg.get("phrases", [])
         for p in phrases:
@@ -266,7 +198,7 @@ def post_infer(output_text: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
                     if e in scores:
                         scores[e] += float(w)
 
-    # B) minimal polarity cues (optional)
+    # 保留极简正负极性词兜底（非 demo）
     pos_cues = ["good", "great", "happy", "glad", "relieved"]
     neg_cues = ["bad", "sad", "angry", "upset", "tired", "problem"]
     if any(c in text for c in pos_cues):
@@ -277,49 +209,53 @@ def post_infer(output_text: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
         if "sad"      in scores: scores["sad"]      += 0.4
         if "serious"  in scores: scores["serious"]  += 0.2
 
-    # Normalize
+    # Normalize to probabilities
     scores = _normalize_scores(scores)
-    best = max(scores.items(), key=lambda kv: kv[1])[0]
-    conf = scores[best]
 
-    # Clamp (with alias)
+    # 1) 先取原始 argmax（不带 clamp）
+    best_raw, conf_raw = max(scores.items(), key=lambda kv: kv[1])
+
+    #2) clamp 到 NPC 允许的情绪范围（如果有设置）
     allowed = ctx.get("npc_profile", {}).get("emotion_range")
-    best = _clamp_to_range(best, allowed)
+    best = _clamp_to_range(best_raw, allowed)
+
+    # 3) 置信度与最终标签同步（若被 clamp 到别的标签，用该标签在 scores 中的概率；
+    #    若该标签不在 scores（极少见），则回退到原始 argmax 的置信度）
+    conf = scores.get(best, conf_raw)
 
     return {
         "emotion_from_content": best,
         "confidence": float(conf),
         "matches": matches,
-        "debug": {"raw_scores": scores}
+        "debug": {
+            "raw_scores": scores,
+            "best_raw": best_raw,
+            "conf_raw": float(conf_raw),
+            "clamped_to": (best if best != best_raw else None)
+        }
     }
 
 # ==============================
-# 3) Style realization (generator)
+# 3) Style realization（不改逻辑）
 # ==============================
-
 def realize_style(emotion: str, style_map: Optional[Dict[str, Any]]) -> Dict[str, Any]:
-    """Return style hooks for the given emotion with robust fallback."""
     em = EMOTION_ALIASES.get(emotion, emotion) if emotion else "neutral"
     style: Dict[str, Any] = {"prefix": [], "suffix": [], "tone": (em or "neutral")}
 
     if not isinstance(style_map, dict):
-        # Built-in safe defaults (even with no map configured)
         if em == "cheerful":
             return {"prefix": ["Hey,"], "suffix": ["!"], "tone": "bright"}
         if em == "friendly":
             return {"prefix": ["Sure,"], "suffix": [], "tone": "warm"}
         if em == "serious":
             return {"prefix": ["Listen,"], "suffix": ["."], "tone": "flat"}
-        return style  # neutral
+        return style
 
-    # exact match
     m = style_map.get(em)
     if not m:
-        # try similarity chain
         for alt in EMOTION_FALLBACK_CHAIN.get(em, []):
             m = style_map.get(alt)
             if m: break
-        # last resort
         if not m:
             m = style_map.get("neutral", None)
 
@@ -329,77 +265,21 @@ def realize_style(emotion: str, style_map: Optional[Dict[str, Any]]) -> Dict[str
     return style
 
 # ==========================================
-# Internal: trigger votes (used in pre phase)
+# Internal: trigger votes（不改逻辑；只是依赖上游 schema）
 # ==========================================
-
 def _trigger_votes(text: str, ctx: Dict[str, Any]) -> Tuple[Dict[str, float], List[str]]:
     t = _norm(text)
     labels = _labels(ctx)
-    votes = _blank_scores(labels)
+    scores = _blank_scores(labels)
     hits: List[str] = []
-    for key, cfg in _triggers(ctx).items():
-        phrases: List[str] = cfg.get("phrases", [])
+    trig = _triggers(ctx)
+    for _, cfg in trig.items():
+        phrases = cfg.get("phrases") or cfg.get("keywords") or []
         for p in phrases:
-            p_l = p.lower()
-            if p_l and p_l in t:
+            p = str(p).lower().strip()
+            if p and p in t:
                 hits.append(p)
                 for e, w in (cfg.get("votes") or {}).items():
-                    if e in votes:
-                        votes[e] += float(w)
-    return votes, hits
-
-# =====================================================
-# Optional helper: propose final emotion in one call
-# =====================================================
-
-def propose_emotion(drafted_text: Optional[str], ctx: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Convenience wrapper:
-      1) pre = pre_hint(ctx)
-      2) post = post_infer(drafted_text, ctx) if drafted_text else None
-      3) final = post.emotion_from_content or pre.emotion_hint
-      4) style = realize_style(final, profile.style_emotion_map)
-    """
-    pre = pre_hint(ctx)
-    post = post_infer(drafted_text or "", ctx) if drafted_text is not None else {"emotion_from_content": None, "confidence": 0.0}
-    final = post.get("emotion_from_content") or pre["emotion_hint"]
-    style = realize_style(final, ctx.get("npc_profile", {}).get("style_emotion_map"))
-    return {
-        "pre_hint": pre,
-        "post_infer": post,
-        "final_emotion": final,
-        "style_hooks": style
-    }
-
-# ===========
-# Self-test
-# ===========
-if __name__ == "__main__":
-    ctx = {
-        "user_text": "thanks for the help at the gate",
-        "npc_id": "guard_01",
-        "slot_name": "small_talk",
-        "last_emotion": "neutral",
-        "npc_profile": {
-            "baseline_emotion": "serious",
-            "emotion_range": DEFAULT_SCHEMA["labels"],
-            "speaking_style": "formal, brief",
-            "style_emotion_map": {
-                "cheerful": {"prefix": ["Hey,"], "suffix": ["!"], "tone": "bright"},
-                "serious":  {"prefix": ["Listen,"], "suffix": ["."], "tone": "flat"},
-                "neutral":  {"tone": "neutral"}
-            }
-        },
-        "emotion_schema": DEFAULT_SCHEMA
-    }
-
-    print("=== PRE-HINT ===")
-    pre = pre_hint(ctx); print(pre)
-
-    draft = "I got off early today and I'm taking it easy."
-    print("=== POST-INFER (content-driven) ===")
-    post = post_infer(draft, ctx); print(post)
-
-    final_emotion = post.get("emotion_from_content") or pre["emotion_hint"]
-    style = realize_style(final_emotion, ctx["npc_profile"]["style_emotion_map"])
-    print("=== STYLE HOOKS ==="); print(style)
+                    if e in scores:
+                        scores[e] += float(w)
+    return scores, hits

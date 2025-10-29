@@ -1,66 +1,175 @@
-emotions:
-  - neutral
-  - friendly
-  - cheerful
-  - serious
-  - annoyed
-  - sad
-
-transforms:
-  neutral:  ["calm", "plain"]
-  friendly: ["warm"]
-  cheerful: ["happy", "upbeat"]
-  serious:  ["formal", "stern"]
-  annoyed:  ["irritated", "grumpy"]
-  sad:      ["down", "blue"]
-
-allowed_transitions:
-  neutral:  [friendly, serious]
-  friendly: [neutral, cheerful]
-  cheerful: [friendly]
-  serious:  [neutral, annoyed]
-  annoyed:  [serious]
-  sad:      [neutral]
-
-# === RUNTIME FIELDS (added for Stage-2/3 runtime) ===
-version: "1.0"
+# ===========================================================
+# emotion_schema.yaml
+# 版本: v2.1 (for Stage2 Emotion Engine integration)
+# 功能: 仅提供 tone/style 引导，不限制 NPC 内容
+# ===========================================================
 
 labels:
-  - cheerful
-  - friendly
   - neutral
+  - friendly
+  - cheerful
   - serious
   - cautious
   - annoyed
   - sad
 
-triggers:
-  thanks:
-    keywords: ["thanks", "thank you", "appreciate", "grateful"]
-    votes: {"cheerful": 1.0, "friendly": 0.5}
-  help:
-    keywords: ["help", "assist", "please"]
-    votes: {"friendly": 0.7, "cautious": 0.3}
-  accuse:
-    keywords: ["you lied", "your fault", "blame", "liar", "cheat"]
-    votes: {"annoyed": 1.0, "serious": 0.5}
-
-content:
-  busy:
-    phrases: ["busy", "overwhelmed", "tight schedule", "under pressure"]
-    votes: {"annoyed": 1.0, "serious": 0.7}
-  free:
-    phrases: ["free today", "taking it easy", "off-duty", "leisure"]
-    votes: {"cheerful": 1.0, "friendly": 0.7}
-  tired:
-    phrases: ["tired", "exhausted", "lack of sleep", "sick"]
-    votes: {"sad": 1.0, "serious": 0.6}
-  lucky:
-    phrases: ["good day", "lucky", "finished early", "went well"]
-    votes: {"cheerful": 1.0, "friendly": 0.6}
-
+# -----------------------------------------------------------
+# Tone mapping: 用于 NPC speaking_style 映射
+# -----------------------------------------------------------
 tone_map:
-  serious:  {"serious": 0.6, "neutral": 0.4}
-  friendly: {"friendly": 0.6, "cheerful": 0.4}
-  formal:   {"serious": 0.5, "neutral": 0.5}
-  casual:   {"friendly": 0.5, "cheerful": 0.5}
+  formal:
+    serious: 0.6
+    neutral: 0.4
+  casual:
+    friendly: 0.5
+    cheerful: 0.5
+  stoic:
+    serious: 0.8
+    neutral: 0.2
+  polite:
+    neutral: 0.6
+    friendly: 0.4
+  relaxed:
+    friendly: 0.5
+    cheerful: 0.3
+    neutral: 0.2
+
+# -----------------------------------------------------------
+# Slot-level prior 默认偏置（仅用于 pre_hint）
+# -----------------------------------------------------------
+slot_prior:
+  small_talk:
+    neutral: 0.6
+    friendly: 0.4
+  market_query:
+    serious: 0.6
+    neutral: 0.4
+  patrol_info:
+    serious: 0.7
+    cautious: 0.3
+  daily_status:
+    neutral: 0.5
+    cheerful: 0.5
+  crime_alert:
+    serious: 0.6
+    cautious: 0.4
+  greeting:
+    friendly: 0.6
+    cheerful: 0.4
+  complaint:
+    serious: 0.5
+    annoyed: 0.5
+  rumor:
+    cautious: 0.6
+    neutral: 0.4
+
+# -----------------------------------------------------------
+# Trigger-based votes（pre_hint 阶段使用）
+# -----------------------------------------------------------
+triggers:
+
+  greeting:
+    phrases: ["hello", "hi", "good morning", "good evening", "nice to meet", "hey there"]
+    votes:
+      friendly: 0.4
+      cheerful: 0.3
+
+  risk:
+    phrases: ["thief", "bandit", "danger", "stay alert", "avoid the docks", "curfew", "attack", "murder"]
+    votes:
+      serious: 0.5
+      cautious: 0.4
+
+  illicit:
+    phrases: ["black market", "contraband", "illegal trade", "smuggling", "forbidden", "underground"]
+    votes:
+      serious: 0.7
+      cautious: 0.3
+
+  unrest:
+    phrases: ["tax", "protest", "riot", "angry", "rebellion", "unrest", "complain", "unfair"]
+    votes:
+      serious: 0.5
+      annoyed: 0.4
+
+  positive:
+    phrases: ["happy", "good news", "cheerful", "great", "fantastic", "wonderful", "prosperous"]
+    votes:
+      cheerful: 0.6
+      friendly: 0.3
+
+  empathy:
+    phrases: ["sorry", "understand", "sympathize", "frustration", "sad"]
+    votes:
+      neutral: 0.4
+      sad: 0.4
+      serious: 0.2
+
+  routine:
+    phrases: ["patrol", "guard", "duty", "shift", "inspection"]
+    votes:
+      serious: 0.5
+      neutral: 0.5
+
+# -----------------------------------------------------------
+# Content sentiment (post_infer 使用)
+# -----------------------------------------------------------
+content:
+  positive:
+    phrases: ["happy", "cheerful", "great", "good business", "prosperous", "busy market", "plenty of customers"]
+    votes:
+      cheerful: 0.6
+      friendly: 0.4
+
+  neutral:
+    phrases: ["no issues", "all clear", "as usual", "nothing new"]
+    votes:
+      neutral: 1.0
+
+  serious:
+    phrases: ["crime", "alert", "stay vigilant", "be careful", "trouble", "incident", "investigation"]
+    votes:
+      serious: 0.6
+      cautious: 0.4
+
+  negative:
+    phrases: ["angry", "problem", "tax", "complaint", "unrest", "suspicious"]
+    votes:
+      serious: 0.5
+      annoyed: 0.4
+
+  risk:
+    phrases: ["danger", "avoid", "night", "thief", "attack", "murder", "unsafe"]
+    votes:
+      cautious: 0.6
+      serious: 0.4
+
+  empathy:
+    phrases: ["sorry", "understand", "sad", "loss", "frustration"]
+    votes:
+      sad: 0.4
+      neutral: 0.3
+      serious: 0.3
+
+# -----------------------------------------------------------
+# Emotion transition smoothing（可选）
+# -----------------------------------------------------------
+transitions:
+  hysteresis: true
+  inertia: 0.3        # 前一轮情绪权重保留比例
+  confidence_threshold: 0.5
+  override_threshold: 0.8
+  neutral_fallback: true
+  debug: false
+
+# -----------------------------------------------------------
+# Default behaviors
+# -----------------------------------------------------------
+defaults:
+  baseline_emotion: neutral
+  neutral_fallback: true
+  confidence_floor: 0.5
+  max_labels: 3
+  weight_trigger: 0.7
+  weight_content: 0.3
+  strong_trigger_threshold: 0.75
