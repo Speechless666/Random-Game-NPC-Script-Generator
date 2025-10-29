@@ -49,24 +49,55 @@ class MemorySummarizer:
         self.ooc_checker = ooc_checker
 
     def summarize(self, recent_dialogue: List[str], slot: Optional[str] = None) -> List[Dict[str, Any]]:
-        """从最近对话中抽取 1-3 条候选事实。
+        """从最近对话中抽取 1-3 条候选事实（增强：兼容 recent_dialogue 中既有 str 也有 dict）。
 
-        行为细节：
-          - recent_dialogue: 字符串列表，每项为一轮对话（例如 "NPC: ..." / "Player: ..."）。
-          - slot: 当上层已知欲抽取的 slot（例如 'past_story'）时可传入；否则使用 provider 返回的 slot 字段。
-          - 对于 slot == 'past_story' 的候选，会走 validators 合规检查；若通过并且有 ooc_checker，则会进一步调用 OOC 检查器判定 ooc_risk。
-          - 返回值：候选事实列表，每项为 dict：{"fact": str, "emotion": str, "slot": str}。
+        行为细节与增强点（中文详细说明）：
+          - 参数 recent_dialogue 既支持 List[str]（每项为 "Speaker: text"），也支持 List[dict]
+           （每项为事件字典，例如 {"speaker": "NPC", "text": "...", "emotion": "..."}）。
+          - 若输入为 dict 列表，会将每条事件格式化为字符串用于构造 LLM prompt，
+            同时保留原始事件可在后续审计/上下文传入 OOC 检查器时使用。
+          - slot: 可选，若上层已知欲抽取的 slot（例如 'past_story'）则传入；否则以 provider 返回的 slot 为准。
+          - 对于 slot == 'past_story' 的候选，会走 validators 合规检查；若通过并且有 ooc_checker，
+            则调用 OOC 检查器（将格式化后的上下文文本传入），并依据 OOC_RISK_THRESHOLD 做最终过滤。
+          - 返回值：候选事实列表，每项为 dict：{"fact": str, "emotion": str, "slot": str}，仅包含通过初筛的项。
         """
+        # 兼容性处理：允许 recent_dialogue 为 None / 空列表
+        if not recent_dialogue:
+            return []
 
-        # 将对话列表合并为供 LLM 使用的文本块
-        text = "\n".join(recent_dialogue)
+        # 如果 recent_dialogue 中的元素是 dict（事件），将其格式化为字符串用于 prompt
+        # 同时构建一个上下文字符串 context_text 传入 OOC 检查器
+        formatted_lines: List[str] = []
+        for item in recent_dialogue:
+            if isinstance(item, str):
+                # 直接使用字符串行
+                formatted_lines.append(item.strip())
+            elif isinstance(item, dict):
+                # 事件字典常见字段：speaker, text, emotion（均为可选）
+                speaker = item.get("speaker", "").strip()
+                text_part = item.get("text", "").strip()
+                # 构建一行类似 "NPC: ..." 的文本（若 speaker 为空则只保留文本）
+                if speaker:
+                    formatted_lines.append(f"{speaker}: {text_part}")
+                else:
+                    formatted_lines.append(text_part)
+            else:
+                # 对于未知类型，尽量将其字符串化，避免抛错
+                try:
+                    formatted_lines.append(str(item))
+                except Exception:
+                    # 无法序列化则跳过该项
+                    continue
+
+        # 将格式化后的上下文合并为单一文本，供 LLM 与 OOC 检查器使用
+        context_text = "\n".join(formatted_lines)
 
         # Prompt：请求 LLM 从对话中提炼 1-3 条“持久事实”
-        # 注意：提示文本保持英文以便与 LLM 交互时语义更稳定
+        # 注意：保持英文 prompt 以便与模型交互时语义稳定
         prompt = f"""
         From the following dialogue, extract 1-3 persistent facts about NPC or player relations.
         Output a JSON list; each item must contain: fact, emotion, slot.
-        Dialogue: {text}
+        Dialogue: {context_text}
         """
 
         try:
@@ -83,16 +114,33 @@ class MemorySummarizer:
         elif isinstance(raw, dict):
             # 有些 provider 可能只返回单个对象
             candidates = [raw]
+        else:
+            # 如果 provider 返回其它类型（例如字符串），尝试解析或直接返回空
+            try:
+                # 若为字符串且包含 JSON 子串，尝试解析（简单防护）
+                import json, re
+                text_raw = str(raw)
+                m = re.search(r"(\[.*\])", text_raw, re.S) or re.search(r"(\{.*\})", text_raw, re.S)
+                if m:
+                    parsed = json.loads(m.group(1))
+                    if isinstance(parsed, list):
+                        candidates = parsed
+                    elif isinstance(parsed, dict):
+                        candidates = [parsed]
+                else:
+                    return []
+            except Exception:
+                return []
 
         accepted: List[Dict[str, Any]] = []
 
         # 遍历每个候选并做校验
         for c in candidates:
             # 规范化字段：去除首尾空白，设置默认情绪为 'neutral'
-            fact_text = c.get("fact", "").strip()
-            emotion = c.get("emotion", "neutral")
+            fact_text = (c.get("fact", "") if isinstance(c, dict) else str(c)).strip()
+            emotion = (c.get("emotion", "neutral") if isinstance(c, dict) else "neutral")
             # 如果 provider 未返回 slot，则使用函数入参提供的 slot（如果有）
-            cslot = c.get("slot", slot)
+            cslot = c.get("slot", slot) if isinstance(c, dict) else slot
 
             candidate = {"fact": fact_text, "emotion": emotion, "slot": cslot}
 
@@ -100,17 +148,23 @@ class MemorySummarizer:
             if cslot == "past_story":
                 # 首先运行 validators 的策略检查（例如 taboo/topics/secret/allowlist 等）
                 # validators.passes_all_checks 应返回 True 表示通过，否则 False 表示被策略拒绝
-                if not validators.passes_all_checks(candidate):
-                    # 若任一策略不通过则直接跳过该候选，不纳入 accepted
-                    # 这里采用“防守式”策略：失败即拦截，记录/告警由上层处理
+                try:
+                    if not validators.passes_all_checks(candidate):
+                        # 若任一策略不通过则直接跳过该候选，不纳入 accepted
+                        # 这里采用“防守式”策略：失败即拦截，记录/告警由上层处理
+                        continue
+                except Exception:
+                    # 若 validators 本身异常，为安全起见拒绝该候选
                     continue
 
                 # 若提供了 OOC 检查器，则进一步检测情绪越界或内容越界的风险
                 if self.ooc_checker is not None:
-                    # 复用既有 OOC 接口：judge_ooc(context, output_json)
-                    # 该接口可以返回修改后的 output_json（例如调整 emotion）并可包含 'ooc_risk' 字段
-                    # 将 recent_dialogue 作为上下文传入
-                    res = self.ooc_checker.judge_ooc(recent_dialogue, candidate)
+                    try:
+                        # 将格式化后的上下文文本传入 OOC 检查器，以便其基于对话上下文评估风险
+                        res = self.ooc_checker.judge_ooc(context_text, candidate)
+                    except Exception:
+                        # OOC 检查器异常 -> 为安全起见拒绝写回该候选
+                        continue
 
                     # 解析返回：若返回为 dict 则尝试读取 ooc_risk
                     ooc_risk = res.get("ooc_risk", 0) if isinstance(res, dict) else 0
@@ -120,7 +174,8 @@ class MemorySummarizer:
                         continue
 
                     # 如果 OOC 检查器对情绪做了调整，则采用其返回值（否则保留原 emotion）
-                    candidate["emotion"] = res.get("emotion", candidate["emotion"]) if isinstance(res, dict) else candidate["emotion"]
+                    if isinstance(res, dict) and "emotion" in res:
+                        candidate["emotion"] = res.get("emotion", candidate["emotion"])
 
             # 非 past_story（例如 public_fact 等）或通过了全部检查的 past_story，会被加入 accepted 列表
             # 注意：这里 accepted 只是“通过初筛并可被上层写入”的候选，上层仍需在写回前执行最终的审计/记录

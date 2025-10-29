@@ -25,6 +25,7 @@ class QwenProvider(BaseProvider):
             self.client = OpenAI(api_key=api_key, base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
 
     def generate(self, prompt: str, schema=None, max_new_tokens=64, retries=2):
+        # retries 用于强制 JSON 输出时的重试次数
         for attempt in range(retries):
             try:
                 print("\nQwenProvider.generate attempt", attempt + 1)
@@ -33,10 +34,8 @@ class QwenProvider(BaseProvider):
                     model="qwen-plus-2025-04-28",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.7,
-                    max_tokens=max_new_tokens,
                     extra_body={"enable_thinking": False} # 使用Qwen3开源版模型时，若未启用流式输出，请将这行取消注释，否则会报错
                 )
-                print("Response received, processing chunks...")
                 
                 # for chunk in response:
                 #     # 如果chunk.choices为空，打印usage信息以调试
@@ -49,8 +48,7 @@ class QwenProvider(BaseProvider):
                 #         print(delta.content, end='', flush=True)
                 #         text += delta.content
                 text = response.choices[0].message.content.strip()
-                print("Full generated text:", text)
-                print(type(text))
+                #print("Full generated text:", text)
                 # 强制JSON输出
                 if schema:
                     try:

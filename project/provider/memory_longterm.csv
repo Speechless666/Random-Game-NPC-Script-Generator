@@ -1,1 +1,4 @@
 player_id,npc_id,fact,emotion
+player1,npc_elira,A hidden cave with glowing crystals is located near the old forest.,excited
+player1,npc_elira,The cave is rumored to be guarded by something magical.,cautious
+player1,npc_elira,A traveler mentioned the cave recently.,curious
