@@ -2,3 +2,7 @@ player_id,npc_id,fact,emotion
 player1,npc_elira,A hidden cave with glowing crystals is located near the old forest.,excited
 player1,npc_elira,The cave is rumored to be guarded by something magical.,cautious
 player1,npc_elira,A traveler mentioned the cave recently.,curious
+player1,npc_elira,There is a cursed coin circulating in town that causes the holder to lose a memory every night.,concerned
+player1,npc_elira,"The NPC finds comfort or contentment in the ongoing activity of the tavern, even if it's slow.",contentment
+player1,npc_elira,"The NPC views the tavern as a consistently lively or active place, even on slower days.",fondness
+player1,npc_elira,The NPC implies a sense of routine or continuity in the tavern's operations.,neutral

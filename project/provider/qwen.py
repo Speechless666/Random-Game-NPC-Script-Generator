@@ -13,18 +13,18 @@ except Exception:
         from base import BaseProvider, APIError  # type: ignore
 
 class QwenProvider(BaseProvider):
-    def __init__(self, api_key: str):
+    def __init__(self, apikey: str):
         # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
-        if os.getenv(api_key):
+        if os.getenv(apikey):
             print("api from env")
-            self.client = OpenAI(api_key=os.getenv(api_key),
-                                 base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
-        # 新加坡节点地址
+            self.client = OpenAI(api_key=os.getenv(apikey),
+                                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+        # 中国/新加坡节点地址
         else:
             print("api not from env")
-            self.client = OpenAI(api_key=api_key, base_url="https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+            self.client = OpenAI(api_key=apikey, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
 
-    def generate(self, prompt: str, schema=None, max_new_tokens=64, retries=2):
+    def generate(self, prompt: str, schema=None, retries=2):
         # retries 用于强制 JSON 输出时的重试次数
         for attempt in range(retries):
             try:
@@ -33,26 +33,16 @@ class QwenProvider(BaseProvider):
                 response = self.client.chat.completions.create(
                     model="qwen-plus-2025-04-28",
                     messages=[{"role": "user", "content": prompt}],
-                    temperature=0.7,
+                    temperature=0.8,
                     extra_body={"enable_thinking": False} # 使用Qwen3开源版模型时，若未启用流式输出，请将这行取消注释，否则会报错
                 )
-                
-                # for chunk in response:
-                #     # 如果chunk.choices为空，打印usage信息以调试
-                #     if not chunk.choices:
-                #         print("\nUsage:")
-                #         print(chunk.usage)
-                #     else:
-                #         delta = chunk.choices[0].delta
-                #         # 逐步打印生成内容
-                #         print(delta.content, end='', flush=True)
-                #         text += delta.content
                 text = response.choices[0].message.content.strip()
-                #print("Full generated text:", text)
+                #print(text)
                 # 强制JSON输出
                 if schema:
                     try:
                         parsed = json.loads(text)
+                        print("Parsed type:", type(parsed))
                         for key in schema:
                             if key not in parsed:
                                 raise ValueError(f"Missing key: {key}")

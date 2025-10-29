@@ -71,10 +71,7 @@ class Generator:
         返回值示例：
           [
             {
-              "draft": {
-                "text": "...",
-                "meta": {"self_report":"...", "sentiment":"positive"}
-              }
+              "draft": {"text": "...", "meta": {"self_report":"...", "sentiment":"positive"}}
             },
             ...
           ]
@@ -91,7 +88,6 @@ class Generator:
         ]
         Only return valid JSON.
         """
-
         # 调用 provider 生成候选
         raw_output = None
         try:
