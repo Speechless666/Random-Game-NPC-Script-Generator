@@ -37,18 +37,20 @@ class QwenProvider(BaseProvider):
                     extra_body={"enable_thinking": False} # 使用Qwen3开源版模型时，若未启用流式输出，请将这行取消注释，否则会报错
                 )
                 print("Response received, processing chunks...")
-                for chunk in response:
-                    # 如果chunk.choices为空，打印usage信息以调试
-                    if not chunk.choices:
-                        print("\nUsage:")
-                        print(chunk.usage)
-                    else:
-                        delta = chunk.choices[0].delta
-                        # 逐步打印生成内容
-                        print(delta.content, end='', flush=True)
-                        text += delta.content
-                #text = response.choices[0].message.content.strip()
-
+                
+                # for chunk in response:
+                #     # 如果chunk.choices为空，打印usage信息以调试
+                #     if not chunk.choices:
+                #         print("\nUsage:")
+                #         print(chunk.usage)
+                #     else:
+                #         delta = chunk.choices[0].delta
+                #         # 逐步打印生成内容
+                #         print(delta.content, end='', flush=True)
+                #         text += delta.content
+                text = response.choices[0].message.content.strip()
+                print("Full generated text:", text)
+                print(type(text))
                 # 强制JSON输出
                 if schema:
                     try:
@@ -56,8 +58,11 @@ class QwenProvider(BaseProvider):
                         for key in schema:
                             if key not in parsed:
                                 raise ValueError(f"Missing key: {key}")
+                        print("Parsed JSON:", parsed)
                         return parsed
-                    except Exception:
+                    except Exception as e:
+                        print("[ERROR]", e)
+                        print("[WARN] Failed to parse JSON output, retrying...")
                         prompt += "\n⚠️ Output must be valid JSON, reformat it and retry."
                         continue
                 return {"text": text}
@@ -66,6 +71,8 @@ class QwenProvider(BaseProvider):
                 time.sleep(0.5)
                 if attempt == retries - 1:
                     raise APIError(f"Qwen API failed after {retries} retries: \n{str(e)}")
+        print("Exiting generate after retries.")
+        return text
 
     def judge(self, context: str, output: str):
         """简单OOC风险评估"""
@@ -75,4 +82,4 @@ class QwenProvider(BaseProvider):
         NPC reply: {output}
         Output JSON: {{"ooc_risk": float(0~1), "reasons": [..]}}
         """
-        return self.generate(prompt, schema=["ooc_risk", "reasons"])
+        return self.generate(prompt, schema=["ooc_risk", "reasons"], retries=1)

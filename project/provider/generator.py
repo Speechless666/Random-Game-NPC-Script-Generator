@@ -1,8 +1,9 @@
 # runtime/generator.py
 import numpy as np
 from typing import Dict, List, Any, Optional
-
-
+import json
+import re
+    
 class Generator:
     """封装候选生成与后验对齐的生成器。
 
@@ -26,6 +27,21 @@ class Generator:
         """
         self.provider = provider
 
+    def safe_json_parse(self, text: str):
+        """安全地解析 LLM 输出为 JSON 对象，自动清理 ```json 包裹."""
+        if not text:
+            return None
+        try:
+            # 清理 Markdown 包裹
+            text = re.sub(r"^```json", "", text.strip(), flags=re.IGNORECASE)
+            text = re.sub(r"```$", "", text.strip())
+            text = text.strip()
+            # 尝试解析为 JSON
+            return json.loads(text)
+        except Exception as e:
+            print(f"[safe_json_parse] JSON parse failed: {e}\nRaw text:\n{text[:300]}...")
+        return None
+    
     def generate_candidates(self, ctx: str, persona: str, n: int = 2) -> List[Dict[str, Any]]:
         """生成候选草稿。
 
@@ -36,54 +52,72 @@ class Generator:
 
         注意：每个候选调用两次 provider 会增加成本；若受限可从初始回复启发式推断 self_report/sentiment。
         """
-        # 用于诱导模型生成候选回复的提示语
         prompt = f"""
         You are an NPC. Persona: {persona}.
         Context: {ctx}.
         Please generate {n} candidate replies in JSON list format, each with fields:
-        {{
-        "reply": "...",
-        "emotion": "happy/sad/neutral/angry"
-        }}
+        [
+          {{
+            "reply": "NPC's natural and emotional response (1-3 sentences)",
+            "emotion": "happy/sad/neutral/angry"
+          }}
+        ]
+        Only return valid JSON.
         """
-        # 期望 provider 返回一个包含 {reply, emotion} 的列表
-        raw_candidates = self.provider.generate(prompt, schema=["reply", "emotion"])
 
-        wrapped: List[Dict[str, Any]] = []
-        # Normalize to list if provider returns a single dict
+        # 调用 provider
+        raw_output = self.provider.generate(prompt, schema=["reply", "emotion"], retries=n)
+        print("Raw provider output for candidates:", raw_output)
+        if not raw_output:
+            print("[WARN] provider returned None, retrying with relaxed prompt...")
+            retry_prompt = f"Generate one fallback reply in JSON with fields reply/emotion for: {ctx}"
+            raw_output = self.provider.generate(retry_prompt, schema=["reply", "emotion"])
+
+        # 尝试解析
+        raw_candidates = None
+        if isinstance(raw_output, str):
+            raw_candidates = self.safe_json_parse(raw_output)
+        elif isinstance(raw_output, (list, dict)):
+            raw_candidates = raw_output
+
+        if raw_candidates is None:
+            print("[ERROR] Failed to parse provider output into JSON. Using fallback reply.")
+            raw_candidates = [{"reply": "I'm sorry, I didn’t quite catch that.", "emotion": "neutral"}]
+
+        # 保证是 list
         if isinstance(raw_candidates, dict):
             raw_candidates = [raw_candidates]
 
+        wrapped: List[Dict[str, Any]] = []
+
         for rc in raw_candidates:
-            # 提取草稿文本和模型建议的情感标签
             draft_text = rc.get("reply") if isinstance(rc, dict) else str(rc)
-            draft_self_sentiment = rc.get("emotion", "neutral") if isinstance(rc, dict) else "neutral"
+            draft_emotion = rc.get("emotion", "neutral") if isinstance(rc, dict) else "neutral"
 
-            # 从模型获取一段简短的自述（可选，但可补充 draft.meta.self_report 字段）
-            # 请求模型返回 one-phrase 的 self_report 和 sentiment 标签
-            sr_prompt = f"In one short phrase, say how you (the NPC) are feeling right now given this reply: '{draft_text}'\nReturn JSON: {{'self_report': '...', 'sentiment': 'positive/negative/neutral'}}"
-            try:
-                sr = self.provider.generate(sr_prompt, schema=["self_report", "sentiment"])
-            except Exception:
-                # 回退：当 provider 调用失败时，从草稿情感推断一个最小自述
-                sr = {"self_report": "seems fine", "sentiment": draft_self_sentiment}
+            # 简短自述阶段
+            sr_prompt = f"""
+            In one short phrase, describe how you (the NPC) feel after saying: "{draft_text}"
+            Return JSON: {{"self_report": "...", "sentiment": "positive/negative/neutral"}}
+            """
+            sr = self.provider.generate(sr_prompt, schema=["self_report", "sentiment"]) or {}
 
-            # 规范化 sr，当 provider 返回 list 或其它格式时取第一个或转为 dict
+            # 防御式处理
+            if isinstance(sr, str):
+                sr = self.safe_json_parse(sr) or {}
             if isinstance(sr, list) and sr:
                 sr = sr[0]
             if not isinstance(sr, dict):
-                sr = {"self_report": str(sr), "sentiment": draft_self_sentiment}
+                sr = {"self_report": "seems fine", "sentiment": draft_emotion}
 
-            # 构建下游期望的 draft 封装
-            draft = {
-                "text": draft_text,
-                "meta": {
-                    "self_report": sr.get("self_report", ""),
-                    "sentiment": sr.get("sentiment", draft_self_sentiment),
-                },
-            }
-
-            wrapped.append({"draft": draft})
+            wrapped.append({
+                "draft": {
+                    "text": draft_text,
+                    "meta": {
+                        "self_report": sr.get("self_report", ""),
+                        "sentiment": sr.get("sentiment", draft_emotion),
+                    },
+                }
+            })
 
         return wrapped
 
