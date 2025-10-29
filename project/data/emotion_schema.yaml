@@ -21,3 +21,46 @@ allowed_transitions:
   serious:  [neutral, annoyed]
   annoyed:  [serious]
   sad:      [neutral]
+
+# === RUNTIME FIELDS (added for Stage-2/3 runtime) ===
+version: "1.0"
+
+labels:
+  - cheerful
+  - friendly
+  - neutral
+  - serious
+  - cautious
+  - annoyed
+  - sad
+
+triggers:
+  thanks:
+    keywords: ["thanks", "thank you", "appreciate", "grateful"]
+    votes: {"cheerful": 1.0, "friendly": 0.5}
+  help:
+    keywords: ["help", "assist", "please"]
+    votes: {"friendly": 0.7, "cautious": 0.3}
+  accuse:
+    keywords: ["you lied", "your fault", "blame", "liar", "cheat"]
+    votes: {"annoyed": 1.0, "serious": 0.5}
+
+content:
+  busy:
+    phrases: ["busy", "overwhelmed", "tight schedule", "under pressure"]
+    votes: {"annoyed": 1.0, "serious": 0.7}
+  free:
+    phrases: ["free today", "taking it easy", "off-duty", "leisure"]
+    votes: {"cheerful": 1.0, "friendly": 0.7}
+  tired:
+    phrases: ["tired", "exhausted", "lack of sleep", "sick"]
+    votes: {"sad": 1.0, "serious": 0.6}
+  lucky:
+    phrases: ["good day", "lucky", "finished early", "went well"]
+    votes: {"cheerful": 1.0, "friendly": 0.6}
+
+tone_map:
+  serious:  {"serious": 0.6, "neutral": 0.4}
+  friendly: {"friendly": 0.6, "cheerful": 0.4}
+  formal:   {"serious": 0.5, "neutral": 0.5}
+  casual:   {"friendly": 0.5, "cheerful": 0.5}

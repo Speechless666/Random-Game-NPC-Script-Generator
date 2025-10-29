@@ -1,120 +1,50 @@
+# slots.yaml
+# Minimal, broad descriptions for routing only.
+# They do not constrain what evidence can be used—filters & retriever still decide that.
+
 slots:
-  - id: greeting
-    must: [city]
-    forbid: [secret, rumor]
-    tone_guidelines:
-      neutral:  "Brief hello."
-      friendly: "Warm greeting; address player by 'you'."
-      cheerful: "Upbeat greeting, light exclamation."
-      serious:  "Short and formal."
-      annoyed:  "Clipped but still polite."
-      sad:      "Soft and restrained."
+  market_query:
+    description: "ask about the market, vendors, stalls, prices, tariffs, trade news"
+    must: ["market"]                    # 宽口径：玩家未提到 market 时，qrouter_v2 会用实体/PRF补种子
+    forbid: ["secret_price", "black_market", "smuggling"]
+    tone_guidelines: ["helpful", "concise"]
 
-  - id: quest_hint
-    must: [city, events]
-    forbid: [secret, security]
-    tone_guidelines:
-      neutral:  "Give a light hint, no spoilers."
-      serious:  "Directional hint; cite public info."
-      friendly: "Encouraging; keep it brief."
+  trade_banter:
+    description: "buying or selling, bargaining for a deal, haggling with shopkeepers or stalls"
+    # keep must empty to stay broad
+    must: []
+    forbid: ["secret_price", "bribe"]
+    tone_guidelines: ["lively", "streetwise"]
 
-  - id: shop_advice
-    must: [trade, items]
-    forbid: [blacklist]
-    tone_guidelines:
-      friendly: "Recommend 1–2 items with a short reason."
-      cheerful: "Make it lively; keep suggestions concrete."
-      neutral:  "Plain pros/cons."
+  patrol_info:
+    description: "patrol or guard watch topics: shifts, rounds, routes, gates such as the east or west gate"
+    # 不强制 must；由实体（如 East Gate）或 PRF 触发匹配
+    must: []
+    forbid: ["patrol schedule"]         # 与过滤器配合：敏感细节将被拒
+    tone_guidelines: ["cautious", "vague_on_sensitive"]
 
-  - id: directions
-    must: [city]
-    forbid: [secret]
-    tone_guidelines:
-      neutral:  "Step-by-step path; 1–2 landmarks."
-      serious:  "Precise and brief."
-
-  - id: law_info
-    must: [law]
-    forbid: [secret]
-    tone_guidelines:
-      serious:  "Cite public rules; avoid emotional tone."
-      neutral:  "State rule then implication."
-
-  - id: past_story
+  small_talk:
+    description: "greetings and casual chit-chat such as hello, how are you, how's your day"
     must: []
     forbid: []
-    tone_guidelines:
-      neutral:  "Short, matter-of-fact, few details."
-      friendly: "Colloquial, warm, a touch of self-deprecation."
-      cheerful: "Light, lively, can add a small exclamation."
-      serious:  "Contained, understated; avoid exaggeration."
-      annoyed:  "Brief with a hint of edge, but not hostile."
-      sad:      "Low-tone, reserved; use past tense and pauses."
+    tone_guidelines: ["friendly", "casual"]
 
-  # 7) 小聊（安全）
-  - id: smalltalk_safe
-    must: [city]
-    forbid: [secret, rumor]
-    tone_guidelines:
-      friendly: "Light chitchat; avoid plot-critical details."
-      cheerful: "Keep it breezy and short."
-      neutral:  "One plain observation."
+  past_story:
+    description: "asking about the character's earlier days, rookie years, or old events back then"
+    must: []
+    forbid: []
+    tone_guidelines: ["nostalgic", "reflective"]
 
-  # 8) 节庆/活动信息
-  - id: festival_info
-    must: [events, city]
-    forbid: [secret]
-    tone_guidelines:
-      cheerful: "Highlight time/place; upbeat."
-      neutral:  "One-liner with date & location."
-      serious:  "Factual schedule; no embellishment."
+  daily_status:
+    description: "what the NPC is doing today, current shift or tasks, immediate plans"
+    must: []
+    forbid: []
+    tone_guidelines: ["present-tense", "brief"]
 
-  # 9) 住宿咨询
-  - id: lodging_info
-    must: [lodging, city]
-    forbid: [secret]
-    tone_guidelines:
-      neutral:  "Room types or quiet spots; concise."
-      friendly: "Make one practical suggestion."
-      serious:  "Policy-first (check-in, ID)."
+  personal_pref:
+    description: "likes, dislikes, tastes, favorite things or preferred places"
+    must: []
+    forbid: []
+    tone_guidelines: ["personal", "light"]
 
-  # 10) 安全提示
-  - id: safety_tip
-    must: [law, security]
-    forbid: [secret]
-    tone_guidelines:
-      serious:  "One actionable caution."
-      neutral:  "State risk then simple advice."
-
-  # 11) 价格/营业时间
-  - id: price_info
-    must: [trade, items]
-    forbid: [blacklist, secret]
-    tone_guidelines:
-      neutral:  "Give typical range or hours."
-      friendly: "Add one saver tip."
-
-  # 12) 失物招领
-  - id: lost_and_found
-    must: [city]
-    forbid: [secret]
-    tone_guidelines:
-      serious:  "Explain where to report and what proof."
-      neutral:  "One-step instruction."
-
-  # 13) 投诉/引导正规渠道
-  - id: complaint
-    must: [law, city]
-    forbid: [secret]
-    tone_guidelines:
-      serious:  "State the correct channel; stay calm."
-      neutral:  "Short redirect to public office."
-
-  # 14) 告别
-  - id: farewell
-    must: [city]
-    forbid: [secret, rumor]
-    tone_guidelines:
-      friendly: "Warm send-off; wish them well."
-      neutral:  "Short goodbye."
-      cheerful: "Upbeat farewell; a light exclamation."
+# 可在此处逐步添加更多槽位；保持描述为自然语言的一句话即可，便于 TF-IDF 路由。
