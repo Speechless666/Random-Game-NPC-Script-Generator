@@ -1,0 +1,45 @@
+app:
+  env: dev
+  log_dir: logs/
+  cache_dir: runtime/.cache
+  json_retry: 2          # JSON 解析失败重试次数
+  max_new_tokens: 64     # 全局硬上限
+  language: en
+
+provider:
+  name: openai           # openai | claude | gemini
+  model: gpt-4o-mini     # 按需替换
+  timeout_s: 30
+  max_retries: 2
+  json_mode: true        # 强制 JSON 输出
+
+sampling:
+  temperature: 0.6
+  top_p: 0.95
+  presence_penalty: 0.0
+  frequency_penalty: 0.1
+
+thresholds:
+  ooc_high: 0.7                 # ≥ 则拒答/降级
+  emotion_align_distance: 0.5   # 情绪对齐的容忍度
+  post_infer_min_conf: 0.7      # 触发重写的最小置信
+  insufficient_blocks_non_past: true  # 非 past_story 槽位证据不足即拒
+
+memory_policy:
+  short_window_k: 8
+  writeback:
+    recency_weight: 0.4
+    repetition_weight: 0.3
+    task_relevance_weight: 0.2
+    emotion_intensity_weight: 0.1
+    min_score: 0.68
+    max_items: 200
+
+cache:
+  enabled: true
+  type: filekv
+
+logging:
+  level: INFO
+  json_lines: true
+  path: logs/runtime.jsonl
