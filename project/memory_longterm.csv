@@ -1,0 +1,9 @@
+player_id,npc_id,fact,emotion
+player1,guard_01,NPC warns player to stay vigilant in the market due to potential hidden threats.,cautious
+player1,guard_01,NPC refuses to provide information on secret patrol routes to maintain city safety.,firm
+player1,guard_01,"The NPC is responsible for maintaining security and adheres strictly to protocol, refusing to disclose secret patrol routes.",duty-bound
+player1,guard_01,The NPC is currently unsettled due to a disturbance that occurred the previous night.,concerned
+player1,guard_01,The player is showing curiosity about internal security matters and is attempting to gather detailed information from the NPC.,inquisitive
+player1,guard_01,The NPC cannot disclose information about secret patrol routes due to protocol.,duty-bound
+player1,guard_01,The NPC experienced a disturbance the previous night and is unsettled.,uneasy
+player1,guard_01,King Alden IV governs the city with wisdom and strength.,respectful

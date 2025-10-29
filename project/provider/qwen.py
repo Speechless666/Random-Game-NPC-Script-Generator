@@ -8,12 +8,12 @@ try:
 except Exception:
     # fallback to relative/ local import for simpler execution contexts
     try:
-        from . import BaseProvider, APIError
+        from .base import BaseProvider, APIError
     except Exception:
         from base import BaseProvider, APIError  # type: ignore
 
 class QwenProvider(BaseProvider):
-    def __init__(self, apikey: str):
+    def __init__(self, apikey="QWEN_API_KEY"):
         # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
         if os.getenv(apikey):
             print("api from env")
