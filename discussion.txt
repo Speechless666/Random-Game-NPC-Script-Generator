@@ -1,0 +1,136 @@
+一、从 filter 开始
+
+我们首先讨论了护栏层的入口——filter.py。
+目标是让 NPC 在接到玩家文本后先判断要不要接话。过滤逻辑分三类：
+
+禁区（taboo）：任何包含机密或不可谈话题的输入立即拒答。
+
+秘密（secret）：同样拒答，但语气可柔和处理。
+
+白名单（allowed entities）：如果输入提到的实体不在名单中，也不允许 NPC 胡乱编造。
+
+这里我们意识到：
+拒答的语句不能是硬编码的“抱歉我不能回答”，而应让 NPC “角色内拒答”。
+所以我们决定将拒答模版独立成 data/denial_templates.yaml，以后可由 A 组或写剧情的人扩展。
+整个 filter 的目的，是防止 NPC 凭空生成——让 AI 只在合法、可控的上下文里思考。
+
+二、retriever 的设计思路
+
+进入 retriever 时，我们明确它要做的事是“只取 public 资料”。
+即从 lore 和 memory 中筛出能安全引用的内容。
+一旦资料不足（insufficient=True），普通槽位必须拒答。
+但 past_story 例外——允许 NPC “在框内编造”。
+我们随后意识到，可以扩展这种特殊槽位（如 daily_status、personal_pref 等），它们都允许 NPC 补全自述信息，从而逐渐形成“活的角色”。
+
+三、情绪模块的两段式设计
+
+emotion_engine 被设计为两阶段：
+
+Pre-hint（生成前）：
+根据 NPC 的 baseline 情绪、槽位 tone 指导和玩家话的触发词，生成一个弱情绪提示，只是设定语气下限。
+
+Post-infer（生成后）：
+生成草稿后，再从内容中推断真正情绪。
+例如 NPC 说 “I’m busy today.” → 推断 serious/annoyed；
+说 “I got off early.” → cheerful/friendly。
+
+若两者差距过大（距离 ≥ 0.5 或置信度 ≥ 0.7），则触发 rewrite_required=True，交由生成层按目标情绪重写。
+
+这让 NPC 既能自动表现自然情绪，又不会越界。
+情绪词典 （emotion_schema.yaml） 由 A 组维护，包含枚举 + 触发词表。
+我们在代码中加了默认 schema 作调试兜底，避免 ctx 缺失时报错。
+
+四、控制器 controller 的整体逻辑
+
+controller.py 串起所有模块，流程如下：
+
+槽位路由：简单规则分配为 small_talk / market_query / past_story 等。
+
+过滤检查：若命中禁区或秘密 → 直接 deny。
+
+检索 evidence：若资料不足且槽位非特殊 → deny_ooc_insufficient。
+
+情绪 pre-hint → 生成前安全语气提示。
+
+调用生成器：当前阶段仅用 toy 版，占位测试。
+
+post-infer 情绪分析：对生成内容二次判断。
+
+比较情绪距离：若偏差大或信心高 → 标记 rewrite_required。
+
+输出的上下文字典包括：
+
+slot / npc_id / flags
+
+evidence
+
+pre_hint & post_infer
+
+rewrite_required 与 target_emotion
+
+审计信息 audit
+
+这一结构既给 Stage 3 生成器用，也用于日志。
+
+五、一次 / 两次 / 多候选调用的讨论
+
+我们花了不少时间确定情绪对齐的调用方式：
+
+方案 A ：一次调用
+模型在生成时自报情绪标签 (meta.sentiment) → 只检查一致性。
+优点：快、便宜；缺点：需 prompt 设计。
+
+方案 B ：两次调用（当前采用）
+第一次出草稿，第二次如情绪不符则重写。
+优点：清晰可控；缺点：时延 ≈ 1.3–1.8 倍。
+
+方案 C ：单次多候选重排
+一次出多候选，选与目标情绪最吻合者。
+优点：自然度高；缺点：耗 token 多、选优逻辑复杂。
+
+目前我们默认用 B 方案。
+后续性能测试会记录延迟、重写率、情绪一致率再评估是否改 A 或 C。
+
+六、关于记忆与自述
+
+我们特别讨论了当玩家问 NPC “过去发生的事”时，记忆文件中可能并无相关信息。
+如果 filter 过严 → 会导致 NPC “什么都不记得”。
+解决思路：
+
+对于 past_story 及同类槽位，允许 NPC 编造合理自述。
+
+一旦编造，被认为是真实经历，写入 memory 形成长期记忆。
+
+这样 NPC 既保持连贯，也能逐步“自我完善”。
+
+七、关于重写和输出的关系
+
+你问到“第一次生成后再重写，那第一次结果是不是浪费？”
+我们确定：
+第一次生成并不浪费，它的 draft 内容被用来推断情绪、生成 self_report、记录日志。
+若 rewrite 触发，第二次调用会在同一上下文基础上仅调语气——不是全重写。
+因此整个输出字典在两次调用里都被使用，保证上下文一致。
+
+八、当前阶段小结
+
+已完成模块：filter / retriever / emotion_engine / controller。
+
+数据依赖：A 组的 emotion_schema.yaml、denial_templates、lore 等。
+
+已支持：
+
+特殊槽位放宽策略
+
+两段式情绪校准
+
+rewrite 判定
+
+调试用 smoketest 输出。
+
+后续任务：
+
+接入 Stage 3 真实 generator （API 或本地模型）；
+
+记录性能指标 → 决定是否保留双调用方案；
+
+扩充更多允许 NPC 自由补全的槽位。
