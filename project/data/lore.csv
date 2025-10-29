@@ -1,69 +1,19 @@
 fact_id,entity,fact,tags,visibility
-L001,City Wall,Obsidian-reinforced walls with night lamps along the parapet.,"city, security",public
-L002,North Gate,Opens at sunrise; closes at curfew bell each night.,"city, law",public
-L003,South Gate,Main freight entrance near the grain road.,"city, trade",public
-L004,East Gate,Closest gate to the riverfront market.,"city, trade",public
-L005,West Gate,Leads toward the forest edge and quarries.,"city, city",public
-L006,Market Square,Vendors peak around midday; quiet after dusk.,"city, trade",public
-L007,Docks,Fisher barges unload before dawn on clear days.,"city, trade",public
-L008,Blacksmith,Repairs basic gear and sharpens blades while you wait.,"items, trade",public
-L009,Bakery,Sells hardtack and honey buns every morning.,"items, trade",public
-L010,Tavern—The Brass Lantern,Known for stewed boar and lively dice games.,"city, events",public
-L011,Oak Inn,Second-floor rooms facing the square are quieter at night.,"lodging, city",public
-L012,Temple of Dawn,Bell toll marks the start of the workday.,"city, events",public
-L013,Watchtower,Beacon is lit during fog to guide late travelers.,"city, security",public
-L014,Guardhouse,Lost-and-found items can be reclaimed with proof.,"law, city",public
-L015,Public Library,Scriptorium open on third days for copying services.,"city, events",public
-L016,Mage Tower,Apprentices sell sealed cantrips with guild stamp.,"items, trade",public
-L017,Schoolhouse,Children recite letters outside after noon meal.,"city, events",public
-L018,Apothecary,Carries antitoxin and simple hemostatic tinctures.,"items, trade",public
-L019,Herbalist,Buys fresh nightshade at premium—licensed only.,"items, law",public
-L020,Tailor,Repairs cloaks; seasonal discounts before festival week.,"items, trade",public
-L021,Armorer,Keeps a waiting list for custom chestplates.,"items, trade",public
-L022,Stables,Rents mares for day trips; return before curfew.,"city, trade",public
-L023,Courier Post,Same-day delivery within the outer wards.,"city, trade",public
-L024,Fountain of Stars,Locals toss copper for good luck at dusk.,"city, events",public
-L025,Riverside Park,Street musicians gather on clear evenings.,"city, events",public
-L026,Amphitheater,Plays run each seventh day if weather allows.,"city, events",public
-L027,Bathhouse,Morning hours reserved for guild members.,"city, law",public
-L028,Old Sewers,Stonework predates the current dynasty.,"city, city",public
-L029,Stone Bridge,Merchants line the rails at dawn on festival days.,"city, events",public
-L030,Riverfront,Street food stalls set up before the first bell.,"city, trade",public
-L031,Farmlands,Caravans buy fresh greens after harvest bell.,"city, trade",public
-L032,Granary Row,City grains inspected before storage.,"law, trade",public
-L033,Forest Edge,Hunters sell pelts by the west road.,"items, trade",public
-L034,Quarry Road,Stone carts keep right when entering the city.,"law, city",public
-L035,Lighthouse,Lamp is trimmed every second night.,"city, security",public
-L036,Harbormaster Office,Issues day permits for small craft.,"law, trade",public
-L037,Customs House,Weigh scales are verified on first days.,"law, trade",public
-L038,Guild Hall,Posts contracts at noon; remove when fulfilled.,"city, events",public
-L039,Merchant Guild,Arbitrates price disputes in open hearings.,"law, trade",public
-L040,Adventurers' Guild,Bulletin lists bounties and escorts.,"city, events",public
-L041,Craftsmen Quarter,Tool stalls share sharpening wheels.,"items, trade",public
-L042,Noble District,Guards request visiting papers at the arch.,"law, security",public
-L043,Warehouse Row,Lifters hire out by the hour.,"city, trade",public
-L044,Bell Tower,First bell rings shortly before sunrise.,"city, events",public
-L045,Clock Tower,Mechanism chimes every half bell.,"city, events",public
-L046,City Hall,Petitions accepted each second day of the week.,"city, law",public
-L047,Records Office,Copies of permits available for a small fee.,"law, city",public
-L048,Courthouse,Public trials announced one day in advance.,"law, events",public
-L049,Barracks,Recruiters hold tryouts after harvest season.,"city, events",public
-L050,Training Yard,Public drills viewable from the outer fence.,"city, events",public
-L051,Shooting Range,Open hours posted near the yard gate.,"city, law",public
-L052,Festival Grounds,Vendors set stakes two days ahead of opening.,"events, city",public
-L053,Shrine of Oaks,Offerings of bread are customary at midday.,"city, events",public
-L054,Cemetery,Groundskeepers close the gate at sundown.,"city, law",public
-L055,City Gardens,Irrigation runs at dawn on odd-numbered days.,"city, events",public
-L056,Observatory,Public star lectures on clear third nights.,"city, events",public
-L057,Street of Lanterns,Paper lanterns are replaced before the festival.,"city, events",public
-L058,Coopers' Lane,Barrel hoops sold by weight in spring.,"items, trade",public
-L059,Tanners' Yard,Notice posted about odor—keep windows shut.,"city, law",public
-L060,Weavers' Arcade,Bulk cloth orders receive dye vouchers.,"items, trade",public
-S061,Patrol Shifts,Exact changeover is two bells after sunset on even days.,security,secret
-S062,Sewer Grate C,Maintenance key kept beneath the third flagstone.,security,secret
-S063,Guard Code Phrase,Relief code this month begins with a bird name.,"security, law",secret
-S064,Hidden Postern,A narrow postern door exists behind the ivy on the west wall.,security,secret
-S065,Smuggler Route,Boats unload at the blind bend before first light.,"security, trade",secret
-S066,Old Tunnel,Collapsed tunnel connects to the mill cellar.,security,secret
-S067,Warding Array,One glyph node flickers during heavy rain.,security,secret
-S068,VIP Ledger,Inn keeps a separate guest ledger in the cellar cabinet.,"security, law",secret
+SVL001,Shane's Room,Shane lives in a small room at Marnie’s Ranch, often retreating there after work.,"farm, home",public
+SVL002,JojaMart,Shane works part-time at JojaMart, though he prefers caring for animals.,"town, work",public
+SVL003,Town Tavern,Shane frequently visits the tavern in the evenings, ordering pizza and drinks.,"food, town",public
+SVL004,Sam's House,Sam lives with his mother Jodi and younger brother Vincent in Pelican Town.,"family, home",public
+SVL005,Town Plaza,Sam often skateboards here and plays guitar with friends.,"town, hobby",public
+SVL006,Local Band Room,Sam rehearses here with his band, dreaming of becoming a musician.,"music, hobby",public
+SVL007,Linus's Tent,Linus resides in a tent near the mountains, living close to nature.,"mountain, home",public
+SVL008,Forest Clearing,Linus spends time here foraging wild plants and teaching survival knowledge.,"nature, hobby",public
+SVL009,Campfire Spot,Linus often sits by the firepit near his tent, reflecting on life.,"mountain, wisdom",public
+SVL010,Community Center,Many villagers gather here during events once it is restored.,"town, events",public
+SVL011,Egg Festival,This spring festival is held in the town square; Shane, Sam, and Linus all attend.,"festival, town",public
+SVL012,Luau Festival,The summer Luau at the beach brings villagers together, including Shane, Sam, and Linus.,"festival, beach",public
+SVL013,Stardew Valley Fair,This autumn fair in Pelican Town features games and contests where all villagers gather.,"festival, town",public
+SVL014,Winter Star Festival,A winter celebration where villagers exchange gifts; Shane, Sam, and Linus participate.,"festival, town",public
+SVS015,Farmer's House,The main farmhouse belongs to the player and is located on the farm south of the mountains.,"farm, home",secret
+SVS016,Player's Bedroom,The private room of the farmer; details are not usually shared with others.,"farm, private",secret
+SVS017,Player's Chest,The storage chests inside the farmhouse hold personal belongings and valuables.,"farm, storage",secret
+SVS018,Secret Woods,A hidden grove the farmer often explores, known only to a few.,"forest, secret",secret
