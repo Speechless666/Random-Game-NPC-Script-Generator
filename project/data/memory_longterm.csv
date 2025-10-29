@@ -1,4 +1,4 @@
 npc_id,key,value,visibility
-G001,shift_preference,Prefers day shifts,public
-S001,preferred_items,Recommends supply bundles,public
-R001,policy_emphasis,Strict on ID check-in,public
+SV001,favorite_evening_spot,Often relaxes at the Stardrop Saloon after work,public
+SV002,hobby_focus,Practices guitar with his band and likes helping at town events,public
+SV003,privacy_emphasis,Values solitude and avoids sharing private locations,public
