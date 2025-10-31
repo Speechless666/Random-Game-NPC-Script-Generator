@@ -9,8 +9,9 @@
 """
 
 from collections import deque
-import csv, os
-from typing import List, Optional
+import csv, os, time
+from typing import List, Optional, Dict, Any
+from pathlib import Path
 
 
 class MemoryStore:
@@ -21,7 +22,7 @@ class MemoryStore:
       - longterm_path: 长期记忆 CSV 文件路径（相对或绝对路径）
     """
 
-    def __init__(self, short_window=5, longterm_path="memory_longterm.csv"):
+    def __init__(self, short_window=5, longterm_path="longterm_memory.csv"):
         # 短期记忆（队列），用于在会话中缓存最近的若干事件
         self.short_memory = deque(maxlen=short_window)
         # 长期记忆 CSV 文件路径
@@ -33,47 +34,159 @@ class MemoryStore:
                 writer = csv.writer(f)
                 # header 顺序必须与 read/write 逻辑一致
                 writer.writerow(["player_id", "npc_id", "fact", "emotion"])
+        # 添加NPC名称映射
+        self.npc_names = {}
+    
+    def set_npc_names(self, npc_names: Dict[str, str]):
+        """设置NPC名称映射"""
+        self.npc_names = npc_names
 
-    def append_event(self, event: dict):
-        """将一个交互事件追加到短期记忆队列。
+    def append_event(self, event: Dict[str, Any]):
+        """添加短期事件 - 使用实际名称"""
+        try:
+            if not hasattr(self, 'shortterm_file'):
+                self.shortterm_file = Path("shortterm_memory.csv")
+                
+            # 确保文件存在
+            if not self.shortterm_file.exists():
+                with open(self.shortterm_file, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(['speaker', 'text', 'emotion', 'timestamp'])
+            
+            # 获取说话者名称
+            speaker = event.get('speaker', '')
+            text = event.get('text', '')
+            emotion = event.get('emotion', '')
+            
+            # 将"player"和"NPC"替换为实际名称
+            actual_speaker = self._get_actual_speaker_name(speaker, event)
+            
+            with open(self.shortterm_file, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                writer.writerow([
+                    actual_speaker,
+                    text,
+                    emotion,
+                    time.strftime("%Y-%m-%d %H:%M:%S")
+                ])
+        except Exception as e:
+            print(f"添加事件失败: {e}")
 
-        event 期望为 dict，结构由上层 pipeline 统一（例如 {"speaker": "NPC", "text": ..., "emotion": ...}）。
-        该方法仅负责入队，不进行持久化。
-        """
-        self.short_memory.append(event)
+    def _get_actual_speaker_name(self, speaker: str, event: Dict[str, Any]) -> str:
+        """获取实际的说话者名称"""
+        # 如果是NPC，使用NPC名称
+        if speaker == "NPC":
+            npc_id = event.get('npc_id', '')
+            if npc_id and npc_id in self.npc_names:
+                return self.npc_names[npc_id]
+            return "Unknown NPC"
+        
+        # 如果是玩家，检查是否是NPC扮演的玩家
+        elif speaker == "player":
+            player_id = event.get('player_id', '')
+            # 如果player_id以"npc_"开头，说明是NPC在扮演玩家
+            if player_id and player_id.startswith("npc_"):
+                npc_id = player_id[4:]  # 去掉"npc_"前缀
+                if npc_id in self.npc_names:
+                    return self.npc_names[npc_id]
+            return "Player"
+        
+        return speaker
+    
+    # ... 其他方法保持不变 ...
+    def retrieve_longterm(self, player_id: str, npc_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """安全地检索长期记忆"""
+        try:
+            # 确保 longterm_file 属性存在
+            if not hasattr(self, 'longterm_file'):
+                self.longterm_file = Path("longterm_memory.csv")
+                return []
+            
+            if not self.longterm_file.exists():
+                return []
+            
+            with open(self.longterm_file, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                
+                # 检查文件是否有正确的列
+                if reader.fieldnames is None:
+                    return []
+                
+                # 检查是否包含必要的列
+                if 'player_id' not in reader.fieldnames:
+                    print(f"警告: 长期记忆文件缺少player_id列，字段名: {reader.fieldnames}")
+                    return []
+                
+                facts = []
+                for row in reader:
+                    try:
+                        # 安全地访问字段
+                        row_player_id = row.get('player_id', '')
+                        row_npc_id = row.get('npc_id', '')
+                        
+                        if row_player_id == player_id and row_npc_id == npc_id:
+                            facts.append(row)
+                            
+                        if len(facts) >= top_k:
+                            break
+                    except (KeyError, AttributeError) as e:
+                        print(f"跳过无效的记忆行: {e}")
+                        continue
+                
+                return facts
+                
+        except Exception as e:
+            print(f"检索长期记忆失败: {e}")
+            return []
+    
+    def get_short_window(self, k: int = 5) -> List[Dict[str, Any]]:
+        """获取最近k个事件 - 修复版本"""
+        events = []
+        try:
+            if self.shortterm_file.exists():
+                with open(self.shortterm_file, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    rows = list(reader)
+                    # 取最后k行
+                    for row in rows[-k:]:
+                        events.append({
+                            'speaker': row.get('speaker', ''),
+                            'text': row.get('text', ''),
+                            'emotion': row.get('emotion', ''),
+                            'timestamp': row.get('timestamp', '')
+                        })
+                print(f"从短期记忆文件读取了 {len(events)} 个事件")
+            else:
+                print("短期记忆文件不存在")
+        except Exception as e:
+            print(f"读取短期记忆失败: {e}")
+        return events
 
-    # 短期记忆接口
-    def get_short_window(self, k: Optional[int] = None) -> List[dict]:
-        """返回短期记忆的切片。
-
-        - 若 k 提供，返回最近 k 条事件；否则返回整个短期窗口内的事件（按时间升序）。
-        """
-        return list(self.short_memory)[-k:] if k else list(self.short_memory)
-
-    # 长期记忆检索：retrieve_longterm(player_id, npc_id, top_k)
-    def retrieve_longterm(self, player_id: str, npc_id: str, top_k: int = 5) -> List[dict]:
-        """从长期 CSV 中读取并返回匹配的长期记忆记录（字典列表）。
-
-        返回的每条记录为 csv.DictReader 解析的字典，字段包括 'player_id','npc_id','fact','emotion'。
-        注意：此处实现是线性扫描，适合小型数据集；若数据量增大请改用数据库或索引结构。
-        """
-        with open(self.longterm_path, "r", newline='') as f:
-            reader = csv.DictReader(f)
-            facts = [row for row in reader if row["player_id"] == player_id and row["npc_id"] == npc_id]
-            return facts[:top_k]
-
-    # 长期记忆写入
-    def write_longterm(self, player_id: str, npc_id: str, facts: List[dict]):
-        """将候选 facts 追加写入长期记忆 CSV。
-
-        facts 应为可迭代对象，每项为 dict，至少包含键 'fact'，可选 'emotion'（默认 'neutral'）。
-        该方法以追加模式打开 CSV，因此不会覆盖已有内容。
-        """
-        with open(self.longterm_path, "a", newline='') as f:
-            writer = csv.writer(f)
-            for fact in facts:
-                # 以防缺失 emotion 字段，使用默认值 'neutral'
-                writer.writerow([player_id, npc_id, fact["fact"], fact.get("emotion", "neutral")])
+    def write_longterm(self, player_id: str, npc_id: str, facts: List[str]):
+        """安全地写入长期记忆"""
+        try:
+            # 确保 longterm_file 属性存在
+            if not hasattr(self, 'longterm_file'):
+                self.longterm_file = Path("longterm_memory.csv")
+            
+            # 确保文件存在并有正确的header
+            if not self.longterm_file.exists():
+                with open(self.longterm_file, 'w', newline='', encoding='utf-8') as f:
+                    writer = csv.DictWriter(f, fieldnames=['player_id', 'npc_id', 'fact', 'timestamp'])
+                    writer.writeheader()
+            
+            with open(self.longterm_file, 'a', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=['player_id', 'npc_id', 'fact', 'timestamp'])
+                for fact in facts:
+                    writer.writerow({
+                        'player_id': player_id,
+                        'npc_id': npc_id,
+                        'fact': fact,
+                        'timestamp': time.strftime("%Y-%m-%d %H:%M:%S")  # 使用 time 模块
+                    })
+                    
+        except Exception as e:
+            print(f"写入长期记忆失败: {e}")
 
     # 清理低权记忆
     def evict_by_policy(self, policy_fn):

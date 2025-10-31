@@ -95,7 +95,7 @@ class MemorySummarizer:
         # Prompt：请求 LLM 从对话中提炼 1-3 条“持久事实”
         # 注意：保持英文 prompt 以便与模型交互时语义稳定
         prompt = f"""
-        From the following dialogue, extract 1-3 persistent facts about NPC or player relations.
+        From the following dialogue, extract 1-3 persistent facts about NPC(NPC's name) or player relations.
         Output a JSON list; each item must contain: fact, emotion, slot.
         Dialogue: {context_text}
         """
