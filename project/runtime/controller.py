@@ -92,16 +92,32 @@ def load_compiled() -> Dict[str, Any]:
 # ----------------------------
 # Optional: filters invocation
 # ----------------------------
+# def run_filters_guard(user_text: str, npc_id: Optional[str], compiled: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+#     if not HAS_FILTERS:
+#         return None
+#     try:
+#         fn = getattr(filters_mod, "precheck_guardrails", None)
+#         if callable(fn):
+#             return fn(user_text=user_text, npc_id=npc_id, compiled=compiled)
+#         fn2 = getattr(filters_mod, "apply", None)
+#         if callable(fn2):
+#             return fn2(user_text=user_text, npc_id=npc_id, compiled=compiled)
+#     except Exception as e:
+#         print("[controller] filters invocation failed:", e, file=sys.stderr)
+#         traceback.print_exc()
+#     return None
+
 def run_filters_guard(user_text: str, npc_id: Optional[str], compiled: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not HAS_FILTERS:
         return None
     try:
         fn = getattr(filters_mod, "precheck_guardrails", None)
         if callable(fn):
-            return fn(user_text=user_text, npc_id=npc_id, compiled=compiled)
+            # 移除compiled参数，因为precheck_guardrails不需要它
+            return fn(user_text=user_text, npc_id=npc_id)
         fn2 = getattr(filters_mod, "apply", None)
         if callable(fn2):
-            return fn2(user_text=user_text, npc_id=npc_id, compiled=compiled)
+            return fn2(user_text=user_text, npc_id=npc_id)
     except Exception as e:
         print("[controller] filters invocation failed:", e, file=sys.stderr)
         traceback.print_exc()
