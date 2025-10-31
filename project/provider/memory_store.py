@@ -34,9 +34,15 @@ class MemoryStore:
                 writer = csv.writer(f)
                 # header 顺序必须与 read/write 逻辑一致
                 writer.writerow(["player_id", "npc_id", "fact", "emotion"])
+        # 添加NPC名称映射
+        self.npc_names = {}
+    
+    def set_npc_names(self, npc_names: Dict[str, str]):
+        """设置NPC名称映射"""
+        self.npc_names = npc_names
 
     def append_event(self, event: Dict[str, Any]):
-        """添加短期事件"""
+        """添加短期事件 - 使用实际名称"""
         try:
             if not hasattr(self, 'shortterm_file'):
                 self.shortterm_file = Path("shortterm_memory.csv")
@@ -47,17 +53,46 @@ class MemoryStore:
                     writer = csv.writer(f)
                     writer.writerow(['speaker', 'text', 'emotion', 'timestamp'])
             
+            # 获取说话者名称
+            speaker = event.get('speaker', '')
+            text = event.get('text', '')
+            emotion = event.get('emotion', '')
+            
+            # 将"player"和"NPC"替换为实际名称
+            actual_speaker = self._get_actual_speaker_name(speaker, event)
+            
             with open(self.shortterm_file, 'a', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
                 writer.writerow([
-                    event.get('speaker', ''),
-                    event.get('text', ''),
-                    event.get('emotion', ''),
-                    time.strftime("%Y-%m-%d %H:%M:%S")  # 使用 time 模块
+                    actual_speaker,
+                    text,
+                    emotion,
+                    time.strftime("%Y-%m-%d %H:%M:%S")
                 ])
         except Exception as e:
             print(f"添加事件失败: {e}")
 
+    def _get_actual_speaker_name(self, speaker: str, event: Dict[str, Any]) -> str:
+        """获取实际的说话者名称"""
+        # 如果是NPC，使用NPC名称
+        if speaker == "NPC":
+            npc_id = event.get('npc_id', '')
+            if npc_id and npc_id in self.npc_names:
+                return self.npc_names[npc_id]
+            return "Unknown NPC"
+        
+        # 如果是玩家，检查是否是NPC扮演的玩家
+        elif speaker == "player":
+            player_id = event.get('player_id', '')
+            # 如果player_id以"npc_"开头，说明是NPC在扮演玩家
+            if player_id and player_id.startswith("npc_"):
+                npc_id = player_id[4:]  # 去掉"npc_"前缀
+                if npc_id in self.npc_names:
+                    return self.npc_names[npc_id]
+            return "Player"
+        
+        return speaker
+    
     # ... 其他方法保持不变 ...
     def retrieve_longterm(self, player_id: str, npc_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
         """安全地检索长期记忆"""

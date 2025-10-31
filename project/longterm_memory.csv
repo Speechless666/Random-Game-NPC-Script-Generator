@@ -2,3 +2,19 @@ player_id,npc_id,fact,timestamp
 Shane,SV001,King Alden the Just is the rightful ruler of the lands.,2025-10-31 08:47:38
 Shane,SV001,"King Alden the Just is recognized as the rightful ruler, inspiring loyalty and duty.",2025-10-31 08:47:47
 Shane,SV001,The NPC mentions that prices are down again.,2025-10-31 08:47:58
+npc_SV001,SV002,The NPC is feeling 'not bad' and is enjoying the town's atmosphere.,2025-10-31 10:32:56
+npc_SV002,SV001,The NPC is open to conversations about music.,2025-10-31 10:33:07
+npc_SV001,SV002,The NPC enjoys the atmosphere of the town and values music.,2025-10-31 10:33:20
+npc_SV002,SV001,NPC is engaged in physical labor such as hauling feed and mending nets.,2025-10-31 10:33:29
+npc_SV001,SV002,The NPC is interested in creating music and finds collaboration engaging.,2025-10-31 10:44:02
+npc_SV002,SV001,The NPC is focused on practical tasks like farming and does not prioritize music.,2025-10-31 10:44:15
+npc_SV001,SV002,The NPC acknowledges that melodies can help pass the time while working.,2025-10-31 10:44:31
+npc_SV002,SV001,Melodies will not plow the fields or repair the fences.,2025-10-31 10:44:45
+npc_SV001,SV002,The NPC believes that music or melodies can help pass time more quickly while working.,2025-10-31 10:44:59
+npc_SV002,SV001,The NPC prefers working in silence and already has a rhythm established in their mind.,2025-10-31 10:45:11
+npc_SV001,SV002,NPC focuses better in silence and does not require external music to establish rhythm.,2025-10-31 11:05:56
+npc_SV002,SV001,Sam practices music regularly.,2025-10-31 11:06:09
+npc_SV001,SV002,Sam practices music regularly.,2025-10-31 11:06:23
+npc_SV002,SV001,"Shane repaired the fence, which has endured many storms over time.",2025-10-31 11:06:35
+npc_SV001,SV002,Sam appreciates the repairs done to the fence and acknowledges its history.,2025-10-31 11:06:49
+npc_SV002,SV001,Shane is uncertain if he has the energy to perform tonight.,2025-10-31 11:07:04
