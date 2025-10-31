@@ -35,3 +35,15 @@ player,How are you feeling today?,unknown,2025-10-30 18:23:15
 NPC,"I have experienced better days. A confrontation occurred near the market this morning, and I remain vigilant. It is not possible to relax, even for a moment.",serious,2025-10-30 18:23:15
 player,Who is the king?,unknown,2025-10-30 18:23:31
 NPC,"King Alden the Just, may he continue to reign for many years to come. He is the rightful ruler of these lands and possesses considerable wisdom.",serious,2025-10-30 18:23:31
+player,What's new in the market today?,unknown,2025-10-31 08:41:49
+NPC,"The market seems quieter than usual today. I've noticed a few new faces among the traders, but nothing out of the ordinary... yet.",neutral,2025-10-31 08:41:49
+player,How are you feeling today?,unknown,2025-10-31 08:42:04
+NPC,"I'm here, doing my duty as always. The safety of the city comes first. How are you holding up?",neutral,2025-10-31 08:42:04
+player,Who is the king?,unknown,2025-10-31 08:42:16
+NPC,"King Alden the Just, may he reign for many more years. He is the rightful ruler of these lands, and we are bound to him by duty and loyalty.",serious,2025-10-31 08:42:16
+player,What's new in the market today?,unknown,2025-10-31 08:47:36
+NPC,Not much. Same old same old. Prices are down again.,neutral,2025-10-31 08:47:36
+player,How are you feeling today?,unknown,2025-10-31 08:47:44
+NPC,Same as always. Work don't stop for feelings.,neutral,2025-10-31 08:47:44
+player,Who is the king?,unknown,2025-10-31 08:47:56
+NPC,"King? Last I checked, the fields still need plowing regardless of who's sitting on the throne.",neutral,2025-10-31 08:47:56
