@@ -31,3 +31,19 @@ Shane,The fence endured far worse storms. I'm uncertain if I have the energy to 
 Sam,"I understand. There are days when the music comes effortlessly, and others when it does not. Perhaps strumming a few chords could help gauge how it feels.",serious,2025-10-31 11:06:46
 Sam,"I understand. There are days when the music comes effortlessly, and others when it does not. Perhaps strumming a few chords could help gauge how it feels.",unknown,2025-10-31 11:07:00
 Shane,"Music is akin to the weather; it arrives unpredictably, without regard for convenience or expectation. There seems little value in attempting to force its occurrence.",serious,2025-10-31 11:07:00
+Shane,"Hello, how are you feeling today?",unknown,2025-10-31 14:13:24
+Sam,"I am feeling well today, thank you for asking. I have just finished practicing music and am now prepared to see what the town has in store. How are you?",serious,2025-10-31 14:13:24
+Sam,"I am feeling well today, thank you for asking. I have just finished practicing music and am now prepared to see what the town has in store. How are you?",unknown,2025-10-31 14:13:35
+Shane,"Alright, I suppose. Just finished fixin' the east fence. Town's quiet as ever, but there's always work to be done.",neutral,2025-10-31 14:13:35
+Shane,"Alright, I suppose. Just finished fixin' the east fence. Town's quiet as ever, but there's always work to be done.",unknown,2025-10-31 14:13:52
+Sam,"Greetings. I appreciate your presence. If you are available, I would require assistance with tuning my guitar later. Provided the weather remains favorable, I may perform a few pieces by the river.",neutral,2025-10-31 14:13:52
+Sam,"Greetings. I appreciate your presence. If you are available, I would require assistance with tuning my guitar later. Provided the weather remains favorable, I may perform a few pieces by the river.",unknown,2025-10-31 14:14:05
+Shane,"Guitar tuning, yes. I can assist with that. I don't have much knowledge about playing, but I will provide help if needed.",serious,2025-10-31 14:14:05
+Shane,"Guitar tuning, yes. I can assist with that. I don't have much knowledge about playing, but I will provide help if needed.",unknown,2025-10-31 14:14:21
+Sam,"Tuning a guitar can be challenging. If you are adjusting the strings and they fail to maintain proper tension, consider these methods to address the issue.",serious,2025-10-31 14:14:21
+Sam,"Tuning a guitar can be challenging. If you are adjusting the strings and they fail to maintain proper tension, consider these methods to address the issue.",unknown,2025-10-31 14:14:34
+Shane,"Tuning a guitar's a pain if the strings won't hold. Try tightening them slow, or maybe they're worn out.",neutral,2025-10-31 14:14:34
+Player,When is the Luau and where is it held?,unknown,2025-10-31 14:14:50
+Sam,The Luau is scheduled for this Saturday at Sandy Beach. I have prepared my uke and am ready to perform — the event is expected to have a relaxed and enjoyable atmosphere.,neutral,2025-10-31 14:14:50
+Player,What's usually happening at the town plaza on sunny evenings?,unknown,2025-10-31 14:17:42
+Sam,"The plaza is a vibrant gathering place, featuring street performers, local bands, and occasionally an open mic. It offers an ideal setting to relax and enjoy the sunset accompanied by live music.",serious,2025-10-31 14:17:42
