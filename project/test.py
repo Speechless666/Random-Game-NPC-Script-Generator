@@ -90,7 +90,7 @@ class DialogueSystemTester:
                 
                 # --- 新增：初始化记忆模块 ---
                 # (使用 fixmemory_store.py 的构造函数，它不需要参数)
-                self.memory_store = MemoryStore() 
+                self.memory_store = MemoryStore(longterm_path="project/data/memory_longterm.csv") 
                 self.api_status["memory_store_initialized"] = True
                 
                 # (memory_summarizer 依赖 provider 和 ooc_checker)
@@ -216,9 +216,9 @@ def main():
     """主函数 - 直接运行预设测试用例"""
     
     test_cases = [
-        {"npc_id": "SV001", "user_text": "Hello Shane, how are you today?", "description": "向Shane打招呼"},
-        {"npc_id": "SV001", "user_text": "What's it like working at JojaMart?", "description": "询问Shane的工作 (可能触发 past_story)"},
-        {"npc_id": "SV002", "user_text": "What's new in Pelican Town?", "description": "日常聊天"},
+        {"npc_id": "SV001", "user_text": "When is the Luau and where is it held?", "description": "向Shane打招呼"},
+        {"npc_id": "SV001", "user_text": "When is the Luau and where is it held?", "description": "询问Shane的工作 (可能触发 past_story)"},
+        {"npc_id": "SV002", "user_text": "When is the Luau and where is it held?", "description": "日常聊天"},
     ]
     
     print("🎮 星露谷物语对话系统测试")
