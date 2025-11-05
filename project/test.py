@@ -11,6 +11,8 @@ from typing import Dict, Any, List
 import argparse
 
 # 添加项目路径
+
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -355,7 +357,6 @@ class DialogueSystemTester:
                                       router_result: Dict, retrieval_result: Dict, npc_id: str):
         """测试阶段3：使用API进行生成与完整的情绪对齐"""
         self.print_section("阶段3: 真实生成与 OOC 检查")
-        
         if not self.use_real_provider or not self.generator or not self.ooc_checker:
             print("🔶 跳过真实生成（模拟模式或生成器/OOC检查器未初始化）")
             # ... (模拟逻辑保持不变) ...

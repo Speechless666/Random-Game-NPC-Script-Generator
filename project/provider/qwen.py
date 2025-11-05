@@ -14,29 +14,21 @@ except Exception:
 
 
 class QwenProvider(BaseProvider):
-    def __init__(self, apikey=os.getenv("GEMINI_API_KEY")):
+    def __init__(self, apikey=os.getenv("QWEN_API_KEY")):
         # 保持原来的 apikey 参数名和环境变量名
         try:
-            from google import genai
-            from google.genai import types as gtypes
-        except ImportError:
-            raise ImportError("请先执行：pip install -U google-genai")
-
-        # 检查环境变量（保持你原有的打印信息风格）
-        if os.getenv("GEMINI_API_KEY"):
-            print("api from env")
-            self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        else:
-            print("api not from env")
-            self.client = genai.Client(api_key=apikey)
-
-        # 保持原来的环境变量名和默认模型
-        self._model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-
-        # 生成配置（类似 temperature）
-        self._gen_config = gtypes.GenerateContentConfig(
-            temperature=0.8
-        )
+            self._model_name = "qwen-plus"
+            # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
+            if os.getenv(apikey):
+                print("api from env")
+                self.client = OpenAI(api_key=os.getenv(apikey),
+                                    base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+            # 中国/新加坡节点地址
+            else:
+                print("api not from env")
+                self.client = OpenAI(api_key=apikey, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+        except Exception as e:
+            raise APIError(f"Failed to initialize QwenProvider: {str(e)}")
 
     def generate(self, prompt: str, schema=None, retries=2):
         # retries 用于强制 JSON 输出时的重试次数
@@ -58,13 +50,14 @@ Return ONLY the JSON object, no other text or explanations.
 Example format: {json.dumps({key: "example_value" for key in schema}, ensure_ascii=False)}
 """
 
-                resp = self.client.models.generate_content(
+                resp = self.client.chat.completions.create(
                     model=self._model_name,
-                    contents=actual_prompt,
-                    config=self._gen_config
-                )
-
-                text = getattr(resp, "text", "")
+                    messages=[
+                        {"role": "user", "content": actual_prompt}
+                    ],
+                    temperature=0.8)
+                text = resp.choices[0].message.content.strip()
+                print(text)
                 if not text:
                     try:
                         text = "".join(
@@ -74,6 +67,7 @@ Example format: {json.dumps({key: "example_value" for key in schema}, ensure_asc
                         ).strip()
                     except Exception:
                         text = ""
+                        raise ValueError("No text found in response candidates")
 
                 print(f"Raw response: {text}")  # 调试信息
 
