@@ -20,14 +20,14 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 BG_FILE = os.path.join(ASSETS_DIR, "bg.jpg")
 
 # Integration mode: set to True to call an HTTP API instead of the local Python stub
-USE_HTTP_API = False
+USE_HTTP_API = True
 API_URL = "http://127.0.0.1:8000/npc_reply"  # e.g., FastAPI: GET /npc_reply?npc_id=Sam&player=Hello
 
 # ------------------- INTEGRATION: YOUR PROJECT HERE -------------------
 def get_npc_reply(npc_id: str, player_text: str) -> str:
     if USE_HTTP_API:
         try:
-            r = requests.get(API_URL, params={"npc_id": npc_id, "player": player_text}, timeout=15)
+            r = requests.get(API_URL, params={"npc_id": npc_id, "player": player_text}, timeout=60)
             r.raise_for_status()
             data = r.json()
             return data.get("text", "(No text field in API response)")
