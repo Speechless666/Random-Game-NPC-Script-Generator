@@ -57,7 +57,7 @@ Example format: {json.dumps({key: "example_value" for key in schema}, ensure_asc
                     ],
                     temperature=0.8)
                 text = resp.choices[0].message.content.strip()
-                print(text)
+
                 if not text:
                     try:
                         text = "".join(

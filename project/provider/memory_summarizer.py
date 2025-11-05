@@ -25,8 +25,8 @@ class MemorySummarizer:
         self.provider = provider
         self.ooc_checker = ooc_checker
 
-    def summarize(self, recent_dialogue: List[Dict[str, Any]], slot: Optional[str] = None) -> List[Dict[str, Any]]:
-        """从最近对话中抽取 1-3 条候选事实..."""
+    def summarize(self, n, recent_dialogue: List[Dict[str, Any]], slot: Optional[str] = None) -> List[Dict[str, Any]]:
+        """从最近对话中抽取 n 条候选事实..."""
         if not recent_dialogue:
             return []
 
@@ -50,7 +50,7 @@ class MemorySummarizer:
         context_text = "\n".join(formatted_lines)
         
         prompt = f"""
-        From the following dialogue, extract 1-3 persistent facts about NPC(NPC's name) or player relations.
+        From the following dialogue, extract {n} persistent facts about NPC(NPC's name) or player relations.
         Output a JSON list; each item must contain: fact, emotion, slot.
         Dialogue: {context_text}
         """

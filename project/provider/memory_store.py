@@ -7,7 +7,7 @@
 from collections import deque
 import csv, os
 from typing import List, Optional, Dict, Any # <-- 导入 Dict, Any
-
+import datetime
 
 class MemoryStore:
     """记忆存储管理类。"""
@@ -19,7 +19,7 @@ class MemoryStore:
         if not os.path.exists(longterm_path):
             with open(longterm_path, "w", newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(["player_id", "npc_id", "fact", "emotion"])
+                writer.writerow(["player_id", "npc_id", "fact", "emotion", "timestamp"])
 
     def append_event(self, event: dict):
         """将一个交互事件追加到短期记忆队列。"""
@@ -61,7 +61,7 @@ class MemoryStore:
             print(f"检索长期记忆失败: {e}")
             return []
     
-    def write_longterm(self, player_id: str, npc_id: str, facts: List[dict]):
+    def write_longterm(self, player_id: str, npc_id: str, facts: List[dict], timestamp: Optional[str] = None):
         """将候选 facts 追加写入长期记忆 CSV。"""
         with open(self.longterm_path, "a", newline='') as f:
             writer = csv.writer(f)
@@ -72,7 +72,8 @@ class MemoryStore:
                         player_id, 
                         npc_id, 
                         fact.get("fact", "MISSING_FACT"), 
-                        fact.get("emotion", "neutral")
+                        fact.get("emotion", "neutral"),
+                        timestamp or datetime.datetime.now()
                     ])
 
     # ... (evict_by_policy 和 policy_fn 保持不变) ...
@@ -83,9 +84,9 @@ class MemoryStore:
         retained = [row for row in reader if not policy_fn(row)]
         with open(self.longterm_path, "w", newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["player_id", "npc_id", "fact", "emotion"])
+            writer.writerow(["player_id", "npc_id", "fact", "emotion", "timestamp"])
             for row in retained:
-                writer.writerow([row["player_id"], row["npc_id"], row["fact"], row["emotion"]])
+                writer.writerow([row["player_id"], row["npc_id"], row["fact"], row["emotion"], row["timestamp"]])
 
     def policy_fn(self, memory_record: dict) -> bool:
         """示例策略函数：淘汰情绪为 'neutral' 的记忆。"""

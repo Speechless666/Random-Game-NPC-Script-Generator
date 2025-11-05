@@ -11,7 +11,8 @@ retriever.py — minimal, drop-in normalized retriever
 from __future__ import annotations
 from typing import Any, Dict, List, Optional, Iterable
 import re
-
+import pandas as pd
+from pathlib import Path
 # --------------------------
 # Text processing utilities
 # --------------------------
@@ -65,6 +66,35 @@ def _row_blob(row: Dict[str, Any]) -> str:
         tags_txt = str(tags or "").replace(";", ",")
     blob_raw = " ".join([fact, entity, tags_txt])
     return _canon(blob_raw)
+
+# 从data/memory_longterm.csv获取与用户输入相关的memory
+# memory_longterm.csv包含npc_id,key,value,visibility,timestamp等字段
+def retrieve_relevant_memory(
+    user_text: str, npc_id: str,
+    memory_path: str = "memory_longterm.csv",
+max_memory: int = 5,) -> List[Dict[str, Any]]:
+
+    current_dir = Path(__file__).resolve().parent.parent
+    memory_path = current_dir / "data" / "memory_longterm.csv"
+    df_memory = pd.read_csv(memory_path)
+    user_norm = _canon(user_text)
+    user_words = set(_filter_tokens(_tok(user_norm)))
+    relevant_memories = []
+
+    for _, row in df_memory.iterrows():
+        if row.get("npc_id") == npc_id:
+            memory_blob = _row_blob(row)
+            memory_words = set(_filter_tokens(_tok(memory_blob)))
+            if user_words & memory_words:
+                relevant_memories.append(row)
+    # 计算相关性分数并排序
+    relevant_memories.sort(
+        key=lambda x: len(user_words & set(_filter_tokens(_tok(_row_blob(x))))),
+        reverse=True
+    )
+    # 返回前五个最相关的记忆
+    return relevant_memories[:max_memory]
+
 
 # --------------------------
 # Main retrieval function
@@ -122,7 +152,10 @@ def retrieve_public_evidence(
     # 按相关性分数排序
     scored_evidence.sort(key=lambda x: x[0], reverse=True)
     picked = [row for score, row in scored_evidence]
-
+    # 添加长期记忆作为检索证据
+    if npc_id:
+        long_term_memories = retrieve_relevant_memory(user_text, npc_id)
+        picked = long_term_memories + picked
     # 如果没有must条件且没有相关证据，返回证据不足
     if not must_list and not picked:
         return {

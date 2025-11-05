@@ -10,6 +10,7 @@ from pathlib import Path
 import json
 import sys
 import traceback
+import datetime
 
 # -----------------------------
 # Robust imports (已修复)
@@ -102,7 +103,6 @@ def get_npc_profile(npc_id: str, compiled_data: Dict[str, Any]):
     }
 # ... (以上是保持不变的辅助函数) ...
 
-
 # ----------------------------
 # Single-turn pipeline (已修改)
 # ----------------------------
@@ -168,7 +168,7 @@ def run_once(
         )
         out["audit"]["retriever"] = r
         evidence = r.get("evidence", []) if isinstance(r, dict) else []
-
+   
         # --- (4) 情绪 Pre-Hint (Phase 2) ---
         # ( ... 情绪逻辑 ... )
         npc_profile = get_npc_profile(npc_id, compiled_data)
@@ -221,7 +221,8 @@ def run_once(
                 "text": user_text, 
                 "emotion": None, # (我们通常不分析玩家情绪)
                 "player_id": player_id, 
-                "npc_id": npc_id
+                "npc_id": npc_id,
+                "timestamp": datetime.datetime.now()
             }
             memory_store.append_event(user_event)
             
@@ -231,7 +232,8 @@ def run_once(
                 "text": out["final_text"], 
                 "emotion": out["final_emotion"],
                 "player_id": player_id,
-                "npc_id": npc_id
+                "npc_id": npc_id,
+                "timestamp": datetime.datetime.now()
             }
             memory_store.append_event(npc_event)
             out["audit"]["memory"]["events_added"] = 2
@@ -240,7 +242,7 @@ def run_once(
             # (注意: 在真实应用中，这可能不会每轮都跑，而是异步或N轮一次)
             recent_history = memory_store.get_short_window()
             
-            facts_to_write = memory_summarizer.summarize(recent_history, slot=slot_name)
+            facts_to_write = memory_summarizer.summarize(1, recent_history, slot=slot_name)
             
             if facts_to_write:
                 # 4. 写入长期记忆

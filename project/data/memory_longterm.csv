@@ -1,6 +1,13 @@
-npc_id,key,value,visibility
-SV001,favorite_evening_spot,Often relaxes at the Stardrop Saloon after work,public
-SV002,hobby_focus,Practices guitar with his band and likes helping at town events,public
-SV003,privacy_emphasis,Values solitude and avoids sharing private locations,public
-P001_Session,SV001,The luau is held at the beach when the sun is high.,indifferent
-P001_Session,SV001,The NPC does not enjoy attending the luau.,reluctant
+player_id,npc_id,fact,emotion,timestamp
+P001_Session,SV001,The luau is held at the beach and starts when the weather improves.,neutral,2025-11-05 17:25:01.225703
+P001_Session,SV001,The roast pig can be smelled before seeing the luau.,neutral,2025-11-05 17:25:01.225703
+P001_Session,SV001,The Luau is held at the restored Community Center.,neutral,2025-11-05 17:28:54.533106
+P001_Session,SV001,The Luau will take place when the weather improves.,neutral,2025-11-05 17:28:54.533106
+P001_Session,SV001,The luau is held on the beach.,neutral,2025-11-05 17:35:27.102489
+P001_Session,SV001,The timing of the luau depends on the weather.,frustrated,2025-11-05 17:35:27.102489
+P001_Session,SV001,The luau is held on the beach.,frustrated,2025-11-05 17:43:00.935426
+P001_Session,SV001,The luau's timing depends on the weather improving.,impatient,2025-11-05 17:43:00.935426
+P001_Session,SV002,The luau is held at the Community Center in Pelican Town.,amused,2025-11-05 17:43:16.339643
+P001_Session,SV002,The luau takes place at sunset.,excited,2025-11-05 17:43:16.339643
+P001_Session,SV002,The NPC is skeptical about the weather affecting event timing but enthusiastic about the event itself.,frustrated,2025-11-05 17:43:16.339643
+P001_Session,SV001,The luau is held at the beach and will start when the rain stops.,frustrated,2025-11-05 17:47:21.923755
