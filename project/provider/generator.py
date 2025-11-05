@@ -144,42 +144,11 @@ class Generator:
                 draft_text = str(rc).strip()
                 draft_emotion = "neutral"
 
-            # 请求短自述（self_report）- 仅用于记录，不影响情绪判断
-            sr_prompt = f"""
-            In one short phrase, describe how you (the NPC) feel after saying: "{draft_text}"
-            Return JSON: {{"self_report": "..."}}
-            """
-
-            sr_raw = None
-            try:
-                sr_raw = self.provider.generate(sr_prompt, schema=["self_report"])
-            except Exception as e:
-                # 记录警告但不要中断整个流程
-                print(f"[WARN] self_report generate failed for draft (will fallback): {e}")
-                sr_raw = None
-
-            # 解析 self_report 返回（支持 dict/list/str）
-            sr = {}
-            if isinstance(sr_raw, dict):
-                sr = sr_raw
-            elif isinstance(sr_raw, list) and sr_raw:
-                # 取第一项为自述
-                first = sr_raw[0]
-                sr = first if isinstance(first, dict) else {}
-            elif isinstance(sr_raw, str):
-                parsed = self.safe_json_parse(sr_raw)
-                if isinstance(parsed, dict):
-                    sr = parsed
-            # 如果仍为空则使用防御性默认
-            if not isinstance(sr, dict) or not sr:
-                sr = {"self_report": "seems fine"}
-
             # 关键修改：始终使用候选生成时的 emotion，而不是 self_report 的 sentiment
             wrapped.append({
                 "draft": {
                     "text": draft_text,
                     "meta": {
-                        "self_report": sr.get("self_report", "").strip(),
                         "sentiment": draft_emotion,  # 直接使用候选的 emotion
                     },
                 }

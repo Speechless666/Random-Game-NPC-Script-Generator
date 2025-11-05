@@ -5,7 +5,7 @@
 (已更新：初始化并传入记忆模块)
 """
 
-import json
+import json, os
 import sys
 from pathlib import Path
 from typing import Dict, Any, List
@@ -214,10 +214,16 @@ class DialogueSystemTester:
 
 def main():
     """主函数 - 直接运行预设测试用例"""
-    
+    # 初始化(清空)longterm_memory_csv
+    if os.path.exists("project/data/memory_longterm.csv"):
+        os.remove("project/data/memory_longterm.csv")
+        #清空文件内容
+        print(f"🗑️ 已清空长期记忆文件")
     test_cases = [
-        {"npc_id": "SV001", "user_text": "When is the Luau and where is it held?", "description": "向Shane打招呼"},
+        {"npc_id": "SV001", "user_text": "When the Luau will be held?", "description": "向Shane打招呼"},
         {"npc_id": "SV001", "user_text": "When is the Luau and where is it held?", "description": "询问Shane的工作 (可能触发 past_story)"},
+        {"npc_id": "SV001", "user_text": "When will you write story?", "description": "日常聊天"},
+        {"npc_id": "SV001", "user_text": "When will you write story?", "description": "日常聊天"},
         {"npc_id": "SV002", "user_text": "When is the Luau and where is it held?", "description": "日常聊天"},
     ]
     

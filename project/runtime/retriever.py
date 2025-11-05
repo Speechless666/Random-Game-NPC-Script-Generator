@@ -72,29 +72,75 @@ def _row_blob(row: Dict[str, Any]) -> str:
 def retrieve_relevant_memory(
     user_text: str, npc_id: str,
     memory_path: str = "memory_longterm.csv",
-max_memory: int = 5,) -> List[Dict[str, Any]]:
+    max_memory: int = 5,
+    min_score: int = 2  # 新增最小分数阈值
+) -> List[Dict[str, Any]]:
 
     current_dir = Path(__file__).resolve().parent.parent
     memory_path = current_dir / "data" / "memory_longterm.csv"
-    df_memory = pd.read_csv(memory_path)
+    
+    try:
+        df_memory = pd.read_csv(memory_path)
+    except FileNotFoundError:
+        print(f"长期记忆文件未找到: {memory_path}")
+        return []
+
     user_norm = _canon(user_text)
     user_words = set(_filter_tokens(_tok(user_norm)))
+    
+    # 如果用户输入太短，直接返回空
+    if len(user_words) < 2:
+        return []
+
     relevant_memories = []
 
     for _, row in df_memory.iterrows():
-        if row.get("npc_id") == npc_id:
-            memory_blob = _row_blob(row)
-            memory_words = set(_filter_tokens(_tok(memory_blob)))
-            if user_words & memory_words:
-                relevant_memories.append(row)
-    # 计算相关性分数并排序
-    relevant_memories.sort(
-        key=lambda x: len(user_words & set(_filter_tokens(_tok(_row_blob(x))))),
-        reverse=True
-    )
-    # 返回前五个最相关的记忆
-    return relevant_memories[:max_memory]
+        # 只检索当前NPC的记忆
+        if str(row.get("npc_id")) != str(npc_id):
+            continue
+            
+        memory_blob = _row_blob(row)
+        memory_words = set(_filter_tokens(_tok(memory_blob)))
+        
+        # 计算相关性分数 - 改进版
+        common_words = user_words & memory_words
+        
+        # 如果没有任何共同词汇，跳过
+        if not common_words:
+            continue
+            
+        # 改进的评分机制
+        score = 0
+        
+        # 1. 基础匹配分数
+        base_score = len(common_words)
+        
+        # 2. 考虑匹配比例 - 避免短文本的误匹配
+        user_coverage = len(common_words) / len(user_words) if user_words else 0
+        memory_coverage = len(common_words) / len(memory_words) if memory_words else 0
+        
+        # 4. 计算最终分数
+        score = base_score
+        # 考虑覆盖率，避免单个单词的偶然匹配
+        coverage_bonus = min(user_coverage * 3, memory_coverage * 2)
+        score += coverage_bonus
+        
+        # 只保留分数足够高的记忆
+        if score >= min_score:
+            row_dict = row.to_dict()
+            row_dict['relevance_score'] = score
+            row_dict['match_details'] = {
+                'common_words': list(common_words),
+                'user_coverage': user_coverage,
+                'memory_coverage': memory_coverage
+            }
+            relevant_memories.append(row_dict)
 
+    # 按相关性分数排序
+    relevant_memories.sort(key=lambda x: x['relevance_score'], reverse=True)
+    
+    # 返回前N个最相关的记忆
+    return [{'memory': mem["fact"] for mem in relevant_memories[:max_memory]}]
 
 # --------------------------
 # Main retrieval function
@@ -153,9 +199,16 @@ def retrieve_public_evidence(
     scored_evidence.sort(key=lambda x: x[0], reverse=True)
     picked = [row for score, row in scored_evidence]
     # 添加长期记忆作为检索证据
+# 在retrieve_public_evidence函数中替换这部分：
     if npc_id:
-        long_term_memories = retrieve_relevant_memory(user_text, npc_id)
+        long_term_memories = retrieve_relevant_memory(
+            user_text, npc_id, 
+            max_memory=3,  # 数量更少但更相关
+            min_score=1.5
+        )
+        # 直接合并到证据列表，而不是包装
         picked = long_term_memories + picked
+    
     # 如果没有must条件且没有相关证据，返回证据不足
     if not must_list and not picked:
         return {

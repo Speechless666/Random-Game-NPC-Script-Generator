@@ -241,8 +241,9 @@ def run_once(
             # 3. 尝试总结
             # (注意: 在真实应用中，这可能不会每轮都跑，而是异步或N轮一次)
             recent_history = memory_store.get_short_window()
-            
-            facts_to_write = memory_summarizer.summarize(1, recent_history, slot=slot_name)
+            print("Recent history:", recent_history[len(recent_history)-2:])  # 仅打印最近2条以避免过长
+
+            facts_to_write = memory_summarizer.summarize(1, recent_history[len(recent_history)-2], slot=slot_name)
             
             if facts_to_write:
                 # 4. 写入长期记忆
