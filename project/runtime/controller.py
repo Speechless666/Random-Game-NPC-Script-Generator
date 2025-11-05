@@ -283,7 +283,8 @@ def run_once(user_text: str, npc_id: Optional[str]="S001") -> Dict[str, Any]:
     out["draft"] = draft
 
     # (6) emotion post + zero-signal neutral fallback
-    post = emotion_engine.post_infer(draft, emo_ctx)
+    draft_emotion = pre["emotion_hint"]
+    post = emotion_engine.post_infer(draft, draft_emotion, emo_ctx)
     post_conf = float(post.get("confidence", 0.0) or 0.0)
     post_dbg = (post.get("debug") or {})
     raw = (post_dbg.get("raw_scores") or {})
