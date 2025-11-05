@@ -2,3 +2,5 @@ npc_id,key,value,visibility
 SV001,favorite_evening_spot,Often relaxes at the Stardrop Saloon after work,public
 SV002,hobby_focus,Practices guitar with his band and likes helping at town events,public
 SV003,privacy_emphasis,Values solitude and avoids sharing private locations,public
+P001_Session,SV001,The luau is held at the beach when the sun is high.,indifferent
+P001_Session,SV001,The NPC does not enjoy attending the luau.,reluctant
