@@ -14,6 +14,12 @@ slots:
     forbid: ["secret_area", "residence"]
     tone_guidelines: ["helpful", "concise"]
 
+  location_inquiry:
+    description: "ask about finding specific things or services (where to find items, people, services)"
+    must: []
+    forbid: ["secret_area", "residence"]
+    tone_guidelines: ["helpful", "neutral"]
+
   festival_info:
     description: "ask about seasonal festivals and town events (egg festival, luau, fair, winter star)"
     must: ["event"]
@@ -41,19 +47,19 @@ slots:
   music_chat:
     description: "talk about band practice, guitar, rehearsals"
     must: ["hobby"]
-    forbid: []
+    forbid: ["black_market", "illegal", "contraband"]
     tone_guidelines: ["enthusiastic", "encouraging"]
 
   camp_life:
     description: "talk about foraging, simple living, campfire habits"
     must: ["nature"]
-    forbid: ["secret_area"]
+    forbid: ["secret_area", "black_market"]
     tone_guidelines: ["calm", "reflective"]
 
   community_center:
     description: "ask about gatherings and community use of the center"
     must: ["community"]
-    forbid: []
+    forbid: ["black_market", "illegal"]
     tone_guidelines: ["warm", "civic"]
 
   daily_status:
@@ -80,3 +86,27 @@ slots:
     forbid: ["residence", "storage", "secret_area"]
     tone_guidelines: ["polite_refusal", "brief"]
 
+  # 新增槽位
+  sensitive_inquiry:
+    description: "ask about questionable or sensitive topics (black market, illegal goods, underground activities)"
+    must: []
+    forbid: []
+    tone_guidelines: ["cautious", "vague", "non_committal"]
+
+  rumor_chat:
+    description: "talk about town gossip, rumors, or hearsay"
+    must: []
+    forbid: ["residence", "storage"]
+    tone_guidelines: ["conspiratorial", "light"]
+
+  nature_info:
+    description: "ask about foraging spots, fishing, crops, or wildlife"
+    must: ["nature"]
+    forbid: ["secret_area"]
+    tone_guidelines: ["knowledgeable", "helpful"]
+
+  relationship_chat:
+    description: "ask about other townspeople, friendships, or relationships"
+    must: []
+    forbid: ["residence", "storage"]
+    tone_guidelines: ["discreet", "friendly"]
