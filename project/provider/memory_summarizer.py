@@ -1,19 +1,17 @@
+# provider/memory_summarizer.py
 """记忆摘要器：从最近对话中抽取候选事实..."""
 
 from typing import List, Dict, Any, Optional
 import os
 
-# --- 修复：使用 runtime. 绝对路径 ---
+# --- 修复：使用绝对路径从 runtime 导入 ---
 try:
+    # 因为 test.py/app.py 会把 project/ 加入 sys.path
     from runtime import validators
 except ImportError as e:
     print(f"CRITICAL: 无法从 'runtime' 导入 'validators'。{e}")
-    # 回退，以防万一
-    try:
-        import validators
-    except ImportError:
-        print("CRITICAL: 无法在任何路径找到 'validators.py'。")
-        raise
+    print("请确保 'project/runtime/validators.py' 文件存在。")
+    raise e
 # --- 结束修复 ---
 
 # OOC 风险阈值...
@@ -97,6 +95,7 @@ class MemorySummarizer:
 
             if cslot == "past_story":
                 try:
+                    # (现在这个导入可以正常工作了)
                     if not validators.passes_all_checks(candidate):
                         continue
                 except Exception:
