@@ -1,10 +1,10 @@
 # provider/qwen.py
 # ref: https://bailian.console.aliyun.com/?tab=model#/model-market/detail/qwen3-vl-32b-thinking
 import json, time, random, os
-from openai import OpenAI
+from openai import OpenAI  # 保留，不动你原来的导入
 try:
     # prefer absolute import when package root is available
-    from project.provider.base import BaseProvider, APIError
+    from provider.base import BaseProvider, APIError
 except Exception:
     # fallback to relative/ local import for simpler execution contexts
     try:
@@ -12,55 +12,127 @@ except Exception:
     except Exception:
         from base import BaseProvider, APIError  # type: ignore
 
+
 class QwenProvider(BaseProvider):
-    def __init__(self, apikey="QWEN_API_KEY"):
-        # 若没有配置环境变量，请用百炼API Key将下行替换为：api_key="sk-xxx"
-        if os.getenv(apikey):
+    def __init__(self, apikey=os.getenv("GEMINI_API_KEY")):
+        # 保持原来的 apikey 参数名和环境变量名
+        try:
+            from google import genai
+            from google.genai import types as gtypes
+        except ImportError:
+            raise ImportError("请先执行：pip install -U google-genai")
+
+        # 检查环境变量（保持你原有的打印信息风格）
+        if os.getenv("GEMINI_API_KEY"):
             print("api from env")
-            self.client = OpenAI(api_key=os.getenv(apikey),
-                                 base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
-        # 中国/新加坡节点地址
+            self.client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         else:
             print("api not from env")
-            self.client = OpenAI(api_key=apikey, base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
+            self.client = genai.Client(api_key=apikey)
+
+        # 保持原来的环境变量名和默认模型
+        self._model_name = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+
+        # 生成配置（类似 temperature）
+        self._gen_config = gtypes.GenerateContentConfig(
+            temperature=0.8
+        )
 
     def generate(self, prompt: str, schema=None, retries=2):
         # retries 用于强制 JSON 输出时的重试次数
+        last_error = None
+        
         for attempt in range(retries):
             try:
-                print("\nQwenProvider.generate attempt", attempt + 1)
-                text = "" # 用于存储生成的文本
-                response = self.client.chat.completions.create(
-                    model="qwen-plus-2025-04-28",
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.8,
-                    extra_body={"enable_thinking": False} # 使用Qwen3开源版模型时，若未启用流式输出，请将这行取消注释，否则会报错
+                print(f"\nQwenProvider.generate attempt {attempt + 1}")
+
+                # 如果需要JSON输出，增强提示
+                actual_prompt = prompt
+                if schema:
+                    # 明确要求JSON格式
+                    schema_desc = ", ".join([f'"{key}": ...' for key in schema])
+                    actual_prompt = f"""{prompt}
+
+IMPORTANT: You MUST return valid JSON format with these exact keys: {schema_desc}
+Return ONLY the JSON object, no other text or explanations.
+Example format: {json.dumps({key: "example_value" for key in schema}, ensure_ascii=False)}
+"""
+
+                resp = self.client.models.generate_content(
+                    model=self._model_name,
+                    contents=actual_prompt,
+                    config=self._gen_config
                 )
-                text = response.choices[0].message.content.strip()
-                #print(text)
+
+                text = getattr(resp, "text", "")
+                if not text:
+                    try:
+                        text = "".join(
+                            p.text for c in getattr(resp, "candidates", []) 
+                            for p in getattr(c, "content", {}).get("parts", [])
+                            if hasattr(p, "text")
+                        ).strip()
+                    except Exception:
+                        text = ""
+
+                print(f"Raw response: {text}")  # 调试信息
+
+                # 清理可能的Markdown代码块
+                cleaned_text = text.strip()
+                if cleaned_text.startswith("```json"):
+                    cleaned_text = cleaned_text[7:]
+                if cleaned_text.startswith("```"):
+                    cleaned_text = cleaned_text[3:]
+                if cleaned_text.endswith("```"):
+                    cleaned_text = cleaned_text[:-3]
+                cleaned_text = cleaned_text.strip()
+
                 # 强制JSON输出
                 if schema:
                     try:
-                        parsed = json.loads(text)
-                        print("Parsed type:", type(parsed))
-                        for key in schema:
-                            if key not in parsed:
-                                raise ValueError(f"Missing key: {key}")
-                        print("Parsed JSON:", parsed)
+                        parsed = json.loads(cleaned_text)
+                        
+                        # 修复：正确处理列表和字典的验证
+                        if isinstance(parsed, list):
+                            # 如果是列表，验证每个元素
+                            for i, item in enumerate(parsed):
+                                if not isinstance(item, dict):
+                                    raise ValueError(f"Item {i} is not a dictionary")
+                                for key in schema:
+                                    if key not in item:
+                                        raise ValueError(f"Missing key '{key}' in item {i}: {item}")
+                        elif isinstance(parsed, dict):
+                            # 如果是字典，验证顶层键
+                            for key in schema:
+                                if key not in parsed:
+                                    raise ValueError(f"Missing key: {key}")
+                        else:
+                            raise ValueError(f"Expected list or dict, got {type(parsed)}")
+                            
                         return parsed
                     except Exception as e:
-                        print("[ERROR]", e)
-                        print("[WARN] Failed to parse JSON output, retrying...")
-                        prompt += "\n⚠️ Output must be valid JSON, reformat it and retry."
-                        continue
+                        print(f"[ERROR] JSON parse failed: {e}")
+                        print(f"[ERROR] Raw text was: {text}")
+                        print(f"[ERROR] Cleaned text was: {cleaned_text}")
+                        last_error = e
+                        
+                        # 重试时使用更强的提示
+                        if attempt < retries - 1:
+                            time.sleep(1)
+                            continue
+                        else:
+                            # 最后一次尝试仍然失败，抛出异常
+                            raise
+
+                # 非JSON返回
                 return {"text": text}
 
             except Exception as e:
-                time.sleep(0.5)
-                if attempt == retries - 1:
-                    raise APIError(f"Qwen API failed after {retries} retries: \n{str(e)}")
-        print("Exiting generate after retries.")
-        return text
+                print(f"[ERROR] API call failed: {e}")
+                last_error = e
+                time.sleep(1)
+
+        raise APIError(f"Qwen API failed after {retries} retries: {str(last_error)}")
 
     def judge(self, context: str, output: str):
         """简单OOC风险评估"""
@@ -68,6 +140,6 @@ class QwenProvider(BaseProvider):
         Judge if the NPC reply stays in character.
         Context: {context}
         NPC reply: {output}
-        Output JSON: {{"ooc_risk": float(0~1), "reasons": [..]}}
+        Output JSON: {{"ooc_risk": 0.0, "reasons": []}}
         """
         return self.generate(prompt, schema=["ooc_risk", "reasons"], retries=1)
