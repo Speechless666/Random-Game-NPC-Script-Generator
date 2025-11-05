@@ -3,11 +3,9 @@
 emotion_engine.py — Phase 2 · Emotion & Style (Two-step: Pre-Hint → Post-Align)
 
 不生成自然语言，仅输出：
-  1) pre_hint(ctx):  生成前的“弱情绪提示 + 样式钩子”
-  2) post_infer(...): 根据草稿内容反推情绪（用于对齐/重写判断）
+  1) pre_hint(ctx):  生成前的"弱情绪提示 + 样式钩子"
+  2) post_infer(...): 直接使用模型提供的情绪标签，只做简单验证
   3) realize_style(...): 情绪 → 样式钩子映射
-
-注意：仅移除 demo 触发词与内容规则；逻辑不变。
 """
 
 from __future__ import annotations
@@ -86,11 +84,34 @@ def _content(ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
 def _blank_scores(labels: List[str]) -> Dict[str, float]:
     return {e: 0.0 for e in labels}
 
-def _clamp_to_range(emotion: str, allowed: Optional[List[str]]) -> str:
+def _clamp_to_range(emotion: str, allowed: Any, original_scores: Dict[str, float] = None) -> str:
+    """将情绪钳制到NPC允许的范围内 - 基于原始得分权重"""
     if not allowed:
         return emotion
-    em = EMOTION_ALIASES.get(emotion, emotion)
-    return em if em in allowed else (allowed[0] if allowed else em)
+    
+    # 规范化输入情绪
+    em = EMOTION_ALIASES.get(emotion, emotion).lower()
+    
+    # 处理 allowed 的各种格式
+    if isinstance(allowed, str):
+        allowed_emotions = [e.strip().lower() for e in allowed.split(',')]
+    elif isinstance(allowed, list):
+        allowed_emotions = [e.lower() if isinstance(e, str) else str(e) for e in allowed]
+    else:
+        return em
+    
+    # 检查情绪是否在允许范围内
+    if em in allowed_emotions:
+        return em
+    else:
+        # 不在范围内，选择允许范围内原始得分最高的情绪
+        if original_scores:
+            allowed_with_scores = [(e, original_scores.get(e, 0)) for e in allowed_emotions if e in original_scores]
+            if allowed_with_scores:
+                return max(allowed_with_scores, key=lambda x: x[1])[0]
+        
+        # 如果没有得分信息或没有匹配的得分，返回第一个允许的情绪
+        return allowed_emotions[0] if allowed_emotions else "neutral"
 
 def _mix_into(base: Dict[str, float], add: Dict[str, float], weight: float) -> None:
     if weight <= 0.0 or not add:
@@ -170,70 +191,63 @@ def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
     dbg["scores"] = scores
 
     allowed = ctx.get("npc_profile", {}).get("emotion_range")
-    best = _clamp_to_range(best, allowed)
+    best = _clamp_to_range(best, allowed, scores)
 
     style = realize_style(best, ctx.get("npc_profile", {}).get("style_emotion_map"))
 
     return {"emotion_hint": best, "style_hooks": style, "debug": dbg}
 
 # ===============================
-# 2) Post-Infer（不改逻辑）
+# 2) Post-Infer（简化版本，直接使用模型情绪）
 # ===============================
-def post_infer(output_text: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+def post_infer(output_text: str, draft_emotion: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    直接使用模型提供的情绪标签，只做简单验证和置信度评估
+    """
     labels = _labels(ctx)
-    text = _norm(output_text)
-    if not text:
-        return {"emotion_from_content": None, "confidence": 0.0, "matches": [], "debug": {"raw_scores": _blank_scores(labels)}}
-
-    scores = _blank_scores(labels)
-    matches: List[str] = []
-
-    for key, cfg in _content(ctx).items():
-        phrases: List[str] = cfg.get("phrases", [])
-        for p in phrases:
-            p_l = p.lower()
-            if p_l and p_l in text:
-                matches.append(p)
-                for e, w in (cfg.get("votes") or {}).items():
-                    if e in scores:
-                        scores[e] += float(w)
-
-    # 保留极简正负极性词兜底（非 demo）
-    pos_cues = ["good", "great", "happy", "glad", "relieved"]
-    neg_cues = ["bad", "sad", "angry", "upset", "tired", "problem"]
-    if any(c in text for c in pos_cues):
-        if "cheerful" in scores: scores["cheerful"] += 0.5
-        if "friendly" in scores: scores["friendly"] += 0.3
-    if any(c in text for c in neg_cues):
-        if "annoyed"  in scores: scores["annoyed"]  += 0.5
-        if "sad"      in scores: scores["sad"]      += 0.4
-        if "serious"  in scores: scores["serious"]  += 0.2
-
-    # Normalize to probabilities
-    scores = _normalize_scores(scores)
-
-    # 1) 先取原始 argmax（不带 clamp）
-    best_raw, conf_raw = max(scores.items(), key=lambda kv: kv[1])
-
-    #2) clamp 到 NPC 允许的情绪范围（如果有设置）
-    allowed = ctx.get("npc_profile", {}).get("emotion_range")
-    best = _clamp_to_range(best_raw, allowed)
-
-    # 3) 置信度与最终标签同步（若被 clamp 到别的标签，用该标签在 scores 中的概率；
-    #    若该标签不在 scores（极少见），则回退到原始 argmax 的置信度）
-    conf = scores.get(best, conf_raw)
-
+    
+    # 直接使用草稿的情绪标签
+    emotion_from_content = draft_emotion
+    
+    # 计算置信度（基于文本长度、标点等简单启发式）
+    confidence = _calculate_confidence_based_on_content(output_text)
+    
     return {
-        "emotion_from_content": best,
-        "confidence": float(conf),
-        "matches": matches,
+        "emotion_from_content": emotion_from_content,
+        "confidence": confidence,
+        "matches": [],  # 不再需要关键词匹配
         "debug": {
-            "raw_scores": scores,
-            "best_raw": best_raw,
-            "conf_raw": float(conf_raw),
-            "clamped_to": (best if best != best_raw else None)
+            "source": "draft_emotion",
+            "raw_scores": {emotion_from_content: 1.0},  # 简化
+            "confidence_factors": confidence
         }
     }
+
+def _calculate_confidence_based_on_content(text: str) -> float:
+    """
+    基于文本内容计算情绪置信度的简单启发式方法
+    """
+    if not text:
+        return 0.0
+    
+    # 基础置信度
+    confidence = 0.7
+    
+    # 文本长度因素
+    word_count = len(text.split())
+    if word_count >= 10:
+        confidence += 0.1
+    elif word_count <= 3:
+        confidence -= 0.2
+    
+    # 标点符号因素
+    if "!" in text:
+        confidence += 0.1  # 感叹号通常表示强烈情绪
+    if "?" in text and text.count("?") > 1:
+        confidence += 0.1  # 多个问号可能表示强烈情绪
+    
+    # 确保置信度在合理范围内
+    return max(0.3, min(0.95, confidence))
 
 # ==============================
 # 3) Style realization（不改逻辑）
