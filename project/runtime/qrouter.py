@@ -5,7 +5,7 @@ runtime/qrouter_v2.py
 - 动态从 data 构建词表；不用预设同义词字典
 - 槽位路由：TF-IDF 余弦，相似度最高者为候选；低置信回落 small_talk
 - 实体/标签解析：对 allowed_entities + lore.entities/tags 做相似度匹配
-- PRF 伪相关反馈：从最相近的 lore 文档中自动提取若干“查询锚点（must seeds）”
+- PRF 伪相关反馈：从最相近的 lore 文档中自动提取若干"查询锚点（must seeds）"
 - 输出统一接口供 filters/retriever/controller 使用
 """
 
@@ -167,6 +167,64 @@ def _build_lore_docs(compiled: Dict[str,Any]) -> Tuple[List[str], List[Dict[str,
     return texts, rows
 
 # --------------------------
+# Phrase extraction utilities
+# --------------------------
+def _extract_phrases(text: str, min_length=2, max_length=3) -> List[str]:
+    """提取文本中的短语（连续的n-gram）"""
+    tokens = _filter_tokens(_tok(text))
+    phrases = []
+    for n in range(min_length, max_length + 1):
+        for i in range(len(tokens) - n + 1):
+            phrase = " ".join(tokens[i:i+n])
+            phrases.append(phrase)
+    return phrases
+
+def _phrase_similarity(user_text: str, phrases: List[str]) -> Dict[str, float]:
+    """计算用户文本与短语列表的相似度"""
+    user_norm = _canon(user_text)
+    scores = {}
+    for phrase in phrases:
+        # 简单的短语匹配：如果短语出现在用户文本中，给予较高分数
+        if phrase in user_norm:
+            scores[phrase] = 2.0  # 基础分数
+            # 根据短语长度给予额外奖励
+            scores[phrase] += len(phrase.split()) * 0.1
+    return scores
+
+# --------------------------
+# Enhanced entity recognition
+# --------------------------
+def _enhanced_rank_list(cands: List[str], user_text: str, topk=6):
+    """增强的实体识别，支持复合词"""
+    # 为每个候选生成多个变体，提高匹配几率
+    docs = []
+    for c in cands:
+        variants = [
+            c,
+            c.replace("_", " "),  # black_market → black market
+            c.replace("_", ""),   # black_market → blackmarket
+            " ".join(c.split("_")),  # 如果c是"black_market"
+        ]
+        docs.append(" ".join(variants))
+    
+    docs_tok = [_filter_tokens(_tok(d)) for d in docs]
+    vecs, idf = _build_tfidf(docs_tok) if docs_tok else ({}, {})
+    q = _vec(user_text, idf) if docs_tok else {}
+    scores = []
+    for i, c in enumerate(cands):
+        s = _cos(q, vecs[i]) if q else 0.0
+        
+        # 如果用户输入直接包含候选词，给予更高分数
+        user_norm = _canon(user_text)
+        if c in user_norm:
+            s += 0.5
+            
+        if s > 0.0:
+            scores.append((c, s))
+    scores.sort(key=lambda x: x[1], reverse=True)
+    return scores[:topk]
+
+# --------------------------
 # Public API
 # --------------------------
 def prepare(user_text: str) -> Dict[str,Any]:
@@ -202,6 +260,7 @@ def prepare(user_text: str) -> Dict[str,Any]:
     # 置信度：top 与次优的 margin（0..1）
     margin = max(0.0, best_score - second)
     route_conf = max(best_score, margin)
+    
     # 低置信度回退
     if route_conf < 0.15:
         best_slot, route_conf = "small_talk", 0.35
@@ -213,30 +272,18 @@ def prepare(user_text: str) -> Dict[str,Any]:
     # --- 2) ENTITY/TAG RESOLUTION (TF-IDF similarity over candidate list) ---
     ents, tags = _build_entity_tag_corpus(compiled)
 
-    # 将每个候选作为一条“文档”，与 query 计算相似度
-    def _rank_list(cands: List[str], topk=6):
-        docs = [" ".join([c, c.replace("_"," ")]) for c in cands]  # 加入变体提升鲁棒性
-        docs_tok = [_filter_tokens(_tok(d)) for d in docs]
-        vecs, idf = _build_tfidf(docs_tok) if docs_tok else ({}, {})
-        q = _vec(user_text, idf) if docs_tok else {}
-        scores = []
-        for i, c in enumerate(cands):
-            s = _cos(q, vecs[i]) if q else 0.0
-            if s > 0.0:
-                scores.append((c, s))
-        scores.sort(key=lambda x: x[1], reverse=True)
-        return scores[:topk]
-
-    ent_rank = _rank_list(ents, topk=6)
-    tag_rank = _rank_list(tags, topk=6)
+    # 使用增强的实体识别
+    ent_rank = _enhanced_rank_list(ents, user_text, topk=6)
+    tag_rank = _enhanced_rank_list(tags, user_text, topk=6)
 
     resolved_entities = [c for c,_ in ent_rank[:5]]
     resolved_tags     = [c for c,_ in tag_rank[:5]]
 
-    # --- 3) PRF: 从最相近 lore 文档自动抽“查询锚点” ---
+    # --- 3) PRF: 从最相近 lore 文档自动抽"查询锚点" ---
     lore_texts, lore_rows = _build_lore_docs(compiled)
     prf_terms: List[str] = []
     prf_sources: List[str] = []
+    
     if lore_texts:
         ltoks = [_filter_tokens(_tok(t)) for t in lore_texts]
         lvecs, lidf = _build_tfidf(ltoks)
@@ -245,14 +292,35 @@ def prepare(user_text: str) -> Dict[str,Any]:
         lsims.sort(key=lambda x: x[1], reverse=True)
         topk = [i for i, s in lsims[:5] if s > 0.0]
         prf_sources = [str(lore_rows[i].get("fact_id") or i) for i in topk]
+        
         # 汇总 top-k 文档里的高权重词
         acc: Dict[str, float] = {}
         for i in topk:
+            # 提取单个词
             for t, w in lvecs[i].items():
                 if t in _STOP or len(t) <= 2: 
                     continue
                 acc[t] = acc.get(t, 0.0) + w
-        prf_terms = [t for t,_ in sorted(acc.items(), key=lambda x: x[1], reverse=True)[:6]]
+            
+            # 提取短语（仅在单个词匹配置信度低时启用）
+            if best_score < 0.3:  # 平衡策略1：置信度阈值
+                phrases = _extract_phrases(lore_texts[i])
+                phrase_scores = _phrase_similarity(user_text, phrases)
+                for phrase, score in phrase_scores.items():
+                    acc[phrase] = acc.get(phrase, 0.0) + score
+        
+        # 平衡策略2：给短语匹配合理的权重
+        prf_candidates = []
+        for term, score in acc.items():
+            # 如果是短语，适当降低权重，避免完全覆盖单个词匹配
+            if ' ' in term:  # 短语包含空格
+                adjusted_score = score * 0.7  # 短语权重系数
+            else:
+                adjusted_score = score
+            prf_candidates.append((term, adjusted_score))
+        
+        prf_candidates.sort(key=lambda x: x[1], reverse=True)
+        prf_terms = [term for term, _ in prf_candidates[:6]]
 
     # --- 4) 组装 must/tags ---
     must_final: List[str] = list(base_must)
