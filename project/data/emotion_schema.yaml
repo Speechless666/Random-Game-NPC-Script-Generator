@@ -81,7 +81,7 @@ triggers:
       cautious: 0.4
 
   illicit:
-    phrases: ["black market", "contraband", "illegal trade", "smuggling", "forbidden", "underground"]
+    phrases: ["black market", "contraband", "illegal", "smuggling", "forbidden", "underground"]
     votes:
       serious: 0.7
       cautious: 0.3
