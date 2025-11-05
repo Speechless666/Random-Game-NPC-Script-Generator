@@ -2,34 +2,17 @@ import numpy as np
 from typing import Dict, List, Any, Optional
 import json
 import re
+import random  # <-- 新增导入
 
 class Generator:
-    """封装候选生成与后验对齐的生成器。
-
-    输出/草稿结构（阶段3规范）：
-      - draft.text: 模型生成的英文草稿文本
-      - draft.meta.self_report: 模型自述的简短短语/关键词（例如："cheerful"）
-      - draft.meta.sentiment: 模型自评情感标签（positive/negative/neutral）
-
-    对齐行为：
-      - 接收 post_infer_emotion，与 draft.meta.sentiment 比较；
-      - 若不一致，调用 provider 重写文本（仅调整语气/情绪，不改变事实），输出 final 包含 audit 信息。
-    """
+    """封装候选生成与后验对齐的生成器。"""
 
     def __init__(self, provider):
         """构造函数：接收实现 generate(prompt, schema=...) 的 provider 实例。"""
         self.provider = provider
 
     def safe_json_parse(self, text: str) -> Optional[Any]:
-        """安全地解析 LLM 输出为 JSON。
-
-        功能与容错策略（从严格到宽松）：
-        1) 处理空值 -> 返回 None
-        2) 去除常见的 Markdown ```json ``` 包裹
-        3) 直接尝试 json.loads
-        4) 若直接解析失败，使用正则提取最外层 JSON 子串（优先 [] 再 {}），再解析
-        5) 若仍解析失败，返回 None（调用方负责回退）
-        """
+        """安全地解析 LLM 输出为 JSON。"""
         if not text:
             return None
 
@@ -61,24 +44,46 @@ class Generator:
         # 无法解析，返回 None
         return None
 
-    def generate_candidates(self, ctx: str, persona: str, n: int = 2) -> List[Dict[str, Any]]:
-        """生成候选草稿并封装为 draft 结构。
+    def generate_candidates(self, ctx: str, persona: str, n: int = 2, evidence: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """生成候选草稿并封装为 draft 结构。"""
+        
+        # --- 修改：构建证据字符串，并随机选择1-2条 ---
+        evidence_str = "No specific evidence provided."
+        if evidence:
+            # --- 新增：随机选择最多2条证据 ---
+            max_evidence_to_use = 2
+            if len(evidence) > max_evidence_to_use:
+                selected_evidence = random.sample(evidence, max_evidence_to_use)
+            else:
+                selected_evidence = evidence
+            # --- 结束新增 ---
 
-        实现说明：
-          - 调用 provider.generate(prompt, schema=["reply","emotion"]) 期望结构化输出；
-          - 兼容 provider 返回字符串（需要解析为 JSON）或直接返回 list/dict 对象；
-          - 为每条候选再调用 provider 生成 self_report & sentiment（若 provider 返回失败则有回退策略）。
-        返回值示例：
-          [
-            {
-              "draft": {"text": "...", "meta": {"self_report":"...", "sentiment":"positive"}}
-            },
-            ...
-          ]
-        """
+            facts = []
+            # 使用 selected_evidence 而不是 evidence
+            for i, item in enumerate(selected_evidence):
+                fact = item.get('fact', '')
+                entity = item.get('entity', '')
+                if entity:
+                    facts.append(f"{i+1}. {entity}: {fact}")
+                else:
+                    facts.append(f"{i+1}. {fact}")
+            evidence_str = "\n".join(facts)
+        # --- 结束修改 ---
+
+        # --- 修改：调整 Prompt，使其更自然 ---
         prompt = f"""
         You are an NPC. Persona: {persona}.
         Context: {ctx}.
+
+        BACKGROUND FACTS (FOR INSPIRATION):
+        ---
+        {evidence_str}
+        ---
+        
+        Use these facts as inspiration for your reply. 
+        DO NOT just repeat the facts verbatim. 
+        Weave them naturally into your persona-driven response. If no facts are provided, answer based on your persona.
+
         Please generate {n} candidate replies in JSON list format, each with fields:
         [
           {{
@@ -88,6 +93,10 @@ class Generator:
         ]
         Only return valid JSON.
         """
+        # --- 结束修改 ---
+        
+        # ... (后续代码与之前相同，保持不变) ...
+
         # 调用 provider 生成候选
         raw_output = None
         try:
@@ -135,15 +144,15 @@ class Generator:
                 draft_text = str(rc).strip()
                 draft_emotion = "neutral"
 
-            # 请求短自述（self_report）与情感标签：防御式处理 provider 输出
+            # 请求短自述（self_report）- 仅用于记录，不影响情绪判断
             sr_prompt = f"""
             In one short phrase, describe how you (the NPC) feel after saying: "{draft_text}"
-            Return JSON: {{"self_report": "...", "sentiment": "positive/negative/neutral"}}
+            Return JSON: {{"self_report": "..."}}
             """
 
             sr_raw = None
             try:
-                sr_raw = self.provider.generate(sr_prompt, schema=["self_report", "sentiment"])
+                sr_raw = self.provider.generate(sr_prompt, schema=["self_report"])
             except Exception as e:
                 # 记录警告但不要中断整个流程
                 print(f"[WARN] self_report generate failed for draft (will fallback): {e}")
@@ -163,14 +172,15 @@ class Generator:
                     sr = parsed
             # 如果仍为空则使用防御性默认
             if not isinstance(sr, dict) or not sr:
-                sr = {"self_report": "seems fine", "sentiment": draft_emotion}
+                sr = {"self_report": "seems fine"}
 
+            # 关键修改：始终使用候选生成时的 emotion，而不是 self_report 的 sentiment
             wrapped.append({
                 "draft": {
                     "text": draft_text,
                     "meta": {
                         "self_report": sr.get("self_report", "").strip(),
-                        "sentiment": sr.get("sentiment", draft_emotion),
+                        "sentiment": draft_emotion,  # 直接使用候选的 emotion
                     },
                 }
             })
@@ -206,57 +216,87 @@ class Generator:
         ranked = sorted(candidates, key=score, reverse=True)
         return ranked[0] if ranked else {"draft": {"text": "", "meta": {"sentiment": "neutral"}}}
 
-    def align_with_post_infer(self, draft_envelope: Dict[str, Any], post_infer_emotion: str, target_emotion: Optional[str] = None) -> Dict[str, Any]:
-        """对齐草稿情感：当 draft.meta.sentiment 与 post_infer_emotion 不一致时请求重写并返回 final 结构（含 audit）。"""
-        draft = draft_envelope.get("draft", {})
-        text = draft.get("text", "")
-        draft_sent = (draft.get("meta", {}).get("sentiment") or "neutral").lower()
-        post_infer = (post_infer_emotion or "neutral").lower()
-        tgt = (target_emotion or post_infer).lower()
+    def align_with_post_infer(self, candidate: Dict, current_emotion: str, target_emotion: str) -> Dict:
+        """
+        将候选回复的情绪从 current_emotion 对齐到 target_emotion
+        """
+        # 如果情绪相同，不需要重写
+        if current_emotion == target_emotion:
+            return {
+                "final": candidate,
+                "audit": {"rewritten": False, "reason": "emotions_identical"}
+            }
+    
+        # 获取原始文本
+        original_text = candidate.get('draft', {}).get('text', '')
+        if not original_text:
+            return {
+              "final": candidate,
+                "audit": {"rewritten": False, "reason": "no_text"}
+            }
+    
+        # 构建重写提示
+        rewrite_prompt = self._build_rewrite_prompt(original_text, current_emotion, target_emotion)
+    
+        try:
+            # 调用API进行重写
+            rewritten_text = self.provider.generate(rewrite_prompt)
+        
+            # 检查重写是否成功
+            if rewritten_text and rewritten_text != original_text:
+                # 创建重写后的候选
+                final_candidate = candidate.copy()
+                final_candidate['final'] = {
+                    'text': rewritten_text,
+                    'emotion': target_emotion,
+                    'meta': candidate.get('draft', {}).get('meta', {})
+                }
+            
+                return {
+                    "final": final_candidate,
+                    "audit": {"rewritten": True, "reason": "emotion_aligned"}
+                }
+            else:
+                # 重写失败，返回原始候选
+                return {
+                    "final": candidate,
+                    "audit": {"rewritten": False, "reason": "rewrite_failed"}
+                }
+            
+        except Exception as e:
+            # 重写过程中出现错误
+            return {
+                "final": candidate,
+                "audit": {"rewritten": False, "reason": f"error: {str(e)}"}
+            }
 
-        audit = {"rewritten": False, "reason": None}
-
-        if draft_sent != post_infer:
-            rewrite_prompt = (
-                f"Please rewrite the following English text to keep facts and content unchanged, "
-                f"but adjust only the tone/emotion to '{tgt}'. Keep the same meaning and details, "
-                f"do not add or remove facts. Original: '{text}'\nReturn only the rewritten text."
-            )
-            try:
-                rewritten = self.provider.generate(rewrite_prompt)
-            except Exception as e:
-                print(f"[WARN] rewrite request failed: {e}")
-                rewritten = None
-
-            # 规范化重写结果为纯文本
-            final_text = None
-            if isinstance(rewritten, dict):
-                final_text = rewritten.get("text") or rewritten.get("reply")
-            elif isinstance(rewritten, list) and rewritten:
-                first = rewritten[0]
-                final_text = first.get("text") if isinstance(first, dict) else str(first)
-            elif isinstance(rewritten, str):
-                # 有时返回是 JSON 字符串或纯文本，先尝试解析 JSON 再回退为原始字符串
-                parsed = self.safe_json_parse(rewritten)
-                if isinstance(parsed, dict):
-                    final_text = parsed.get("text") or parsed.get("reply") or str(parsed)
-                else:
-                    final_text = rewritten
-
-            if not final_text:
-                final_text = text
-
-            audit["rewritten"] = True
-            audit["reason"] = f"sentiment_mismatch: draft={draft_sent}, post_infer={post_infer}"
-            final_emotion = tgt
-        else:
-            final_text = text
-            final_emotion = draft_sent
-
-        return {"final": {"text": final_text, "emotion": final_emotion, "audit": audit}}
+    def _build_rewrite_prompt(self, text: str, current_emotion: str, target_emotion: str) -> str:
+        """构建情绪重写提示"""
+        emotion_descriptions = {
+            "neutral": "neutral, matter-of-fact tone",
+            "friendly": "friendly, warm tone", 
+            "cheerful": "cheerful, upbeat tone",
+            "serious": "serious, concerned tone",
+            "annoyed": "annoyed, irritated tone",
+            "sad": "sad, melancholic tone"
+        }
+        
+        current_desc = emotion_descriptions.get(current_emotion, "neutral tone")
+        target_desc = emotion_descriptions.get(target_emotion, "neutral tone")
+        
+        prompt = f"""
+        Rewrite the following text from a {current_desc} to a {target_desc}. 
+        Keep the core meaning and facts the same, but adjust the emotional tone.
+        
+        Original text: "{text}"
+        
+        Rewritten text:
+        """
+        
+        return prompt.strip()
 
     def refusal_response(self, deny: Dict[str, Any], persona: str, tone_guidelines: Optional[str] = None) -> Dict[str, str]:
-        """根据 deny.reason 生成英文的角色内拒答（已实现，细节保持不变）。"""
+        """根据 deny.reason 生成英文的角色内拒答。"""
         reason = deny.get("reason", "unknown_entity")
         details = deny.get("details")
 
