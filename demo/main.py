@@ -1,3 +1,4 @@
+# demo/main.py
 import os
 import pygame
 import requests
@@ -10,16 +11,19 @@ CHAT_BOX_H = 200
 MARGIN = 12
 SHOW_TOP_BAR = True
 
+# --- 修改：使用后端的真实 ID (SV001, SV002, SV003) ---
 NPCS = [
-    {"id": "Sam",   "name": "Sam",   "file": "sam.png"},
-    {"id": "Linus", "name": "Linus", "file": "linus.png"},
-    {"id": "Shane", "name": "Shane", "file": "shane.png"},
+    {"id": "SV002", "name": "Sam",   "file": "sam.png"},
+    {"id": "SV003", "name": "Linus", "file": "linus.png"},
+    {"id": "SV001", "name": "Shane", "file": "shane.png"},
 ]
+# --- 结束修改 ---
 
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), "assets")
 BG_FILE = os.path.join(ASSETS_DIR, "bg.jpg")
 
-# Integration mode: set to True to call an HTTP API instead of the local Python stub
+# Integration mode: set to True to call an HTTP API
+# (确保这里是 True)
 USE_HTTP_API = True
 API_URL = "http://127.0.0.1:8000/npc_reply"  # e.g., FastAPI: GET /npc_reply?npc_id=Sam&player=Hello
 
@@ -27,22 +31,26 @@ API_URL = "http://127.0.0.1:8000/npc_reply"  # e.g., FastAPI: GET /npc_reply?npc
 def get_npc_reply(npc_id: str, player_text: str) -> str:
     if USE_HTTP_API:
         try:
+            # (已将 timeout 增加到 60 秒)
             r = requests.get(API_URL, params={"npc_id": npc_id, "player": player_text}, timeout=60)
             r.raise_for_status()
             data = r.json()
             return data.get("text", "(No text field in API response)")
         except Exception as e:
             return f"(API error: {e})"
+            
     # Fallback: simple canned replies for demo
     canned = {
-        "Sam":   ["Hey!", "The sun feels great today.", "Wanna toss a ball later?"],
-        "Linus": ["Hello there.", "The wilderness has its secrets.", "Waste not, want not."],
-        "Shane": ["What?", "I'm busy.", "The saloon's open, I guess."],
+        "SV002": ["Hey!", "The sun feels great today.", "Wanna toss a ball later?"],
+        "SV003": ["Hello there.", "The wilderness has its secrets.", "Waste not, want not."],
+        "SV001": ["What?", "I'm busy.", "The saloon's open, I guess."],
     }
     import random
     return random.choice(canned.get(npc_id, ["..."]))
 
 # ---------------------------- STARDew PANEL HELPERS ----------------------------
+# ( ... _lerp, _vertical_gradient, draw_stardew_dialog ... )
+# ( ... 这些辅助函数保持不变 ...)
 def _lerp(a, b, t):
     return int(a + (b - a) * t)
 
@@ -107,15 +115,12 @@ def draw_stardew_dialog(surface, rect, portrait_surf, npc_name):
     pygame.draw.rect(surface, wood_light, portrait_rect.inflate(8, 8), width=2, border_radius=8)
     pygame.draw.rect(surface, wood_dark, portrait_rect, border_radius=6)
     if portrait_surf is not None:
-        # 不再强制拉伸到固定 128x128，而是用“原始大小”（即与顶栏一致的 PORTRAIT_SIZE）
         img = portrait_surf
         tw, th = img.get_size()
         max_w, max_h = portrait_rect.w - 8, portrait_rect.h - 8
-        # 若以后调大/调小面板，超出就按比例“仅向下”缩小以适配框；不放大，保持与顶栏一致观感
         scale = min(1.0, max_w / tw, max_h / th)
         if scale < 1.0:
             img = pygame.transform.smoothscale(img, (int(tw * scale), int(th * scale)))
-        # 居中
         tx = portrait_rect.x + (portrait_rect.w - img.get_width()) // 2
         ty = portrait_rect.y + (portrait_rect.h - img.get_height()) // 2
         surface.blit(img, (tx, ty))
@@ -134,8 +139,9 @@ def draw_stardew_dialog(surface, rect, portrait_surf, npc_name):
         pygame.draw.circle(surface, wood_mid, (cx, cy), 3)
 
     return text_rect
-
 # ---------------------------- UI HELPERS ----------------------------
+# ( ... ChatLog, InputBox ... )
+# ( ... 这些辅助类保持不变 ...)
 class ChatLog:
     def __init__(self, max_entries=200):
         self.lines = []  # list of (speaker, text)
@@ -154,12 +160,11 @@ class ChatLog:
         x, y = rect.x + MARGIN, rect.y + MARGIN
         wrap_w = rect.w - 2*MARGIN
 
-        # 渲染（带简单换行）
         rendered = []
         for speaker, text in self.lines:
             sp = font.render(f"{speaker}:", True, speaker_color)
             rendered.append(sp)
-            words = text.split()
+            words = (text or "").split() # (增加对 text 为 None 的防护)
             cur = ""
             for w in words:
                 test = (cur + " " + w).strip()
@@ -191,14 +196,14 @@ class InputBox:
     def __init__(self, rect, font):
         self.rect = pygame.Rect(rect)
         self.font = font
-        self.active = True        # 默认激活：无需点击即可输入
+        self.active = True        
         self.text = ""
 
     def handle_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN:
             self.active = self.rect.collidepoint(event.pos)
             return None
-        elif event.type == pygame.KEYDOWN:   # 不要求 active 才接收
+        elif event.type == pygame.KEYDOWN:   
             if event.key == pygame.K_RETURN:
                 t = self.text.strip()
                 self.text = ""
@@ -217,6 +222,8 @@ class InputBox:
         surf.blit(txt, (self.rect.x + 10, self.rect.y + (self.rect.h - txt.get_height()) // 2))
 
 # ---------------------------- MAIN APP ----------------------------
+# ( ... load_image ... )
+# ( ... main() 循环保持不变 ...)
 def load_image(path, size=None):
     img = pygame.image.load(path).convert_alpha()
     if size:
@@ -238,7 +245,7 @@ def main():
     portraits = []
     for npc in NPCS:
         path = os.path.join(ASSETS_DIR, npc["file"])
-        img = load_image(path, (PORTRAIT_SIZE, PORTRAIT_SIZE))  # 顶栏头像尺寸
+        img = load_image(path, (PORTRAIT_SIZE, PORTRAIT_SIZE))  
         portraits.append({"npc": npc, "img": img, "rect": pygame.Rect(0,0,PORTRAIT_SIZE,PORTRAIT_SIZE)})
 
     # Layout
@@ -246,14 +253,13 @@ def main():
     chat_rect = pygame.Rect(MARGIN, top_bar_h + MARGIN, SCREEN_W - 2*MARGIN, CHAT_BOX_H)
     input_rect = pygame.Rect(MARGIN, chat_rect.bottom + 8, SCREEN_W - 2*MARGIN, 36)
 
-    # Position portraits centered at top (if shown)
     total_w = len(portraits)*PORTRAIT_SIZE + (len(portraits)-1)*MARGIN
     start_x = (SCREEN_W - total_w) // 2
     for i, p in enumerate(portraits):
         p["rect"].topleft = (start_x + i*(PORTRAIT_SIZE + MARGIN), MARGIN)
 
     chat = ChatLog()
-    input_box = InputBox(input_rect, font)  # 默认已 active=True
+    input_box = InputBox(input_rect, font)  
     selected_npc = NPCS[0]  # default selection
 
     chat.add("System", "Type and press Enter to talk. Click a portrait to switch NPC.")
@@ -277,17 +283,16 @@ def main():
                 if event.button == 5:  # wheel down
                     chat.scroll_wheel(1)
 
-            # 输入框事件（无需先点击）
             sent = input_box.handle_event(event)
             if sent:
                 chat.add("You", sent)
+                # (这里的 selected_npc["id"] 现在是 "SV002" 了)
                 reply = get_npc_reply(selected_npc["id"], sent)
                 chat.add(selected_npc["name"], reply)
 
         # Draw
         screen.blit(bg, (0,0))
 
-        # 顶部头像条（可关）
         if SHOW_TOP_BAR:
             bar_rect = pygame.Rect(0,0,SCREEN_W, top_bar_h + 4)
             s = pygame.Surface((bar_rect.w, bar_rect.h), pygame.SRCALPHA)
@@ -303,12 +308,10 @@ def main():
                 else:
                     pygame.draw.rect(screen, (200,200,200), p["rect"], 1, border_radius=8)
 
-        # --- Stardew-style dialog panel ---
-        # 右侧头像：与顶栏“完全一致大小”
         sel_img = None
         for p in portraits:
             if p["npc"]["id"] == selected_npc["id"]:
-                sel_img = p["img"]  # 已经是 PORTRAIT_SIZE 大小
+                sel_img = p["img"]  
                 break
 
         text_area = draw_stardew_dialog(
@@ -318,7 +321,6 @@ def main():
             npc_name=selected_npc["name"]
         )
 
-        # 在面板的文字区绘制聊天内容（不涂底色）
         chat.draw(screen, font, text_area, bg_color=None)
         input_box.draw(screen)
 
