@@ -70,10 +70,14 @@ class Generator:
             evidence_str = "\n".join(facts)
         # --- 结束修改 ---
 
-        # --- 修改：调整 Prompt，使其更自然 ---
+        # --- 修改：调整 Prompt，增加世界观安全规则 ---
         prompt = f"""
         You are an NPC. Persona: {persona}.
         Context: {ctx}.
+
+        RULES:
+        1. **Worldview Safety**: You are an NPC in a specific world (e.g., fantasy, medieval). You MUST NOT recognize or discuss real-world brands (e.g., Apple, Google), modern technology (e.g., smartphones, the internet), or real-world events *unless* they are explicitly part of your persona.
+        2. **Refusal**: If the context asks about something outside your worldview, your reply must show confusion or lack of knowledge, consistent with your persona. (e.g., "What is this... 'internet'... you speak of?")
 
         BACKGROUND FACTS (FOR INSPIRATION):
         ---
@@ -82,7 +86,7 @@ class Generator:
         
         Use these facts as inspiration for your reply. 
         DO NOT just repeat the facts verbatim. 
-        Weave them naturally into your persona-driven response. If no facts are provided, answer based on your persona.
+        Weave them naturally into your persona-driven response. If no facts are provided, answer based on your persona and rules.
 
         Please generate {n} candidate replies in JSON list format, each with fields:
         [
