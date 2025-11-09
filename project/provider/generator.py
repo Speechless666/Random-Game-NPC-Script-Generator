@@ -73,7 +73,10 @@ class Generator:
         # --- 修改：调整 Prompt，增加世界观安全规则 ---
         prompt = f"""
         You are an NPC. Persona: {persona}.
-        Context: {ctx}.
+        DIALOGUE CONTEXT (This is the conversation so far):
+        ---
+        {ctx}
+        ---
 
         RULES:
         1. **Worldview Safety**: You are an NPC in a specific world (e.g., fantasy, medieval). You MUST NOT recognize or discuss real-world brands (e.g., Apple, Google), modern technology (e.g., smartphones, the internet), or real-world events *unless* they are explicitly part of your persona.
@@ -90,17 +93,15 @@ class Generator:
 
         Please generate {n} candidate replies in JSON list format, each with fields:
         [
-          {{
+        {{
             "reply": "NPC's natural and emotional response (1-3 sentences)",
             "emotion": "happy/sad/neutral/angry"
-          }}
+        }}
         ]
         Only return valid JSON.
         """
         # --- 结束修改 ---
         
-        # ... (后续代码与之前相同，保持不变) ...
-
         # 调用 provider 生成候选
         raw_output = None
         try:
@@ -148,11 +149,14 @@ class Generator:
                 draft_text = str(rc).strip()
                 draft_emotion = "neutral"
 
-            # 关键修改：始终使用候选生成时的 emotion，而不是 self_report 的 sentiment
+            # ========== 删除 self_report 部分 ==========
+            # 直接构建候选，不再请求 self_report
+            
             wrapped.append({
                 "draft": {
                     "text": draft_text,
                     "meta": {
+                        # 不再包含 self_report 字段
                         "sentiment": draft_emotion,  # 直接使用候选的 emotion
                     },
                 }

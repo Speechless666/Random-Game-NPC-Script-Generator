@@ -185,7 +185,14 @@ def run_once(
         # --- (5) 真实生成 (Phase 3) ---
         # ( ... 生成逻辑 ... )
         persona = f"{npc_profile.get('name', npc_id)} - {npc_profile.get('speaking_style', 'default style')}"
-        ctx = f"User asked: '{q['text_norm']}'" 
+        #将短期记忆加入生成上下文
+        short_memories = memory_store.get_short_window(k=10)
+        #根据Npc ID 和 Player ID 获取相关短期记忆
+        selected_memories = [m for m in short_memories if m['npc_id'] == npc_id and m['player_id'] == player_id]
+        context_lines = [f"{m['speaker']}({m['player_id'] if m['speaker'] == 'player' else m['npc_id']}): {m['text']} (Emotion:{m['emotion']})" for m in selected_memories]
+        # context_lines.reverse()
+        print("短期记忆上下文:", context_lines)
+        ctx = f"User asked: '{q['text_norm']}'\nRecent Dialogue History:\n" + "\n".join(context_lines)
         candidates = generator.generate_candidates(ctx, persona, n=2, evidence=evidence)
         
         # 如果被过滤器拦下，这里就不生成
@@ -227,8 +234,9 @@ def run_once(
             memory_store.append_event(user_event)
             
             # 2. 记录 NPC 事件
+            npc_name = npc_profile.get("name", npc_id) or "npc"
             npc_event = {
-                "speaker": "npc", 
+                "speaker": npc_name, 
                 "text": out["final_text"], 
                 "emotion": out["final_emotion"],
                 "player_id": player_id,
@@ -243,7 +251,7 @@ def run_once(
             recent_history = memory_store.get_short_window()
             print("Recent history:", recent_history[len(recent_history)-2:])  # 仅打印最近2条以避免过长
 
-            facts_to_write = memory_summarizer.summarize(1, recent_history[len(recent_history)-2], slot=slot_name)
+            facts_to_write = memory_summarizer.summarize(1, [user_event, npc_event], slot=slot_name)
             
             if facts_to_write:
                 # 4. 写入长期记忆

@@ -225,6 +225,7 @@ def main():
         {"npc_id": "SV001", "user_text": "When will you write story?", "description": "日常聊天"},
         {"npc_id": "SV001", "user_text": "When will you write story?", "description": "日常聊天"},
         {"npc_id": "SV002", "user_text": "When is the Luau and where is it held?", "description": "日常聊天"},
+        {"npc_id": "SV002", "user_text": "When is the Luau and where is it held?", "description": "日常聊天"},
     ]
     
     print("🎮 星露谷物语对话系统测试")

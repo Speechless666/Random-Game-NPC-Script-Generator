@@ -50,7 +50,7 @@ class MemorySummarizer:
         context_text = "\n".join(formatted_lines)
         
         prompt = f"""
-        From the following dialogue, extract strictly {num_memory} persistent facts about NPC(NPC's name) or player relations.
+        From the following dialogue, extract strictly {num_memory} persistent facts about NPC(NPC's id) or player(player's id) relations.
         Output a JSON list; each item must contain: fact, emotion, slot.
         Dialogue: {context_text}
         """
