@@ -132,9 +132,14 @@ def get_npc_reply_endpoint(
         
         # 3. 返回 Demo (main.py) 期望的格式
         # main.py 期望一个 "text" 字段
+        final_text = result.get("final_text", "(无文本)")
+        final_emotion = result.get("final_emotion", "unknown")
+
+        display_text = f"{final_text}  ({final_emotion})"
+
         return {
-            "text": result.get("final_text"),
-            "emotion": result.get("final_emotion"),
+            "text": display_text,
+            "emotion": final_emotion,
             "slot": result.get("slot")
         }
 
