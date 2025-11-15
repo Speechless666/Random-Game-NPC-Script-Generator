@@ -20,3 +20,7 @@ dashscope     # For Qwen
 # --- Data Handling ---
 pandas        # Used by retriever.py to read CSV
 numpy         # Used by generator.py
+
+# --- Demo  (demo/main.py) ---
+pygame
+requests
