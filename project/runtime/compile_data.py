@@ -1,56 +1,69 @@
 # ==========================================================
-# compile_data.py (runtime/.cache version)
+# compile_data.py (Config-driven version)
 # ==========================================================
-# 功能：
-#   - 从 ../data/ 目录加载 npc.csv、lore.csv、slots.yaml、emotion_schema.yaml
-#   - 在当前目录（即 runtime/）下生成 .cache/compiled.json
-#   - 仅做“编译打包”，不含任何 demo 数据或自测代码
+# Function:
+#   - Loads config.yaml to find data/ and runtime/.cache/ paths.
+#   - Loads npc.csv, lore.csv, slots.yaml, emotion_schema.yaml from config paths.
+#   - Generates .cache/compiled.json in the config-specified cache dir.
+#   - This only "compiles" data; it contains no demo data.
 # ==========================================================
 
 import os, json, csv, yaml
 from pathlib import Path
 
-# ---------- 路径配置 ----------
-RUNTIME_DIR = Path(__file__).parent
-DATA_DIR = RUNTIME_DIR.parent / "data"
-CACHE_DIR = RUNTIME_DIR / ".cache"
-CACHE_FILE = CACHE_DIR / "compiled.json"
+# ---------- REMOVED: All hardcoded path variables ----------
+# (Paths will now be read from the config)
 
-NPC_CSV = DATA_DIR / "npc.csv"
-LORE_CSV = DATA_DIR / "lore.csv"
-SLOTS_YAML = DATA_DIR / "slots.yaml"
-EMOTION_YAML = DATA_DIR / "emotion_schema.yaml"
-
-# ---------- 工具 ----------
+# ---------- Utilities (Logic Unchanged) ----------
 def _safe_yaml(p: Path):
     if not p.exists():
+        print(f"[compile_data] WARN: YAML file not found, returning empty: {p}")
         return {}
     with p.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 
 def _safe_csv_rows(p: Path):
     if not p.exists():
+        print(f"[compile_data] WARN: CSV file not found, returning empty: {p}")
         return []
     with p.open("r", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
-# ---------- 编译 ----------
-def compile_all():
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+# ---------- Compilation (Logic Unchanged, but paths are now parameters) ----------
+def compile_all(config: dict, project_root: Path):
+    """
+    Loads all data files specified in the config and builds the cache object.
+    """
+    
+    # --- MODIFIED: Get paths from config ---
+    data_files = config.get('data_files', {})
+    app_config = config.get('app', {})
+    
+    # Construct full paths relative to the 'project/' folder (project_root)
+    npc_csv_path = project_root / data_files.get('npc', 'data/npc.csv')
+    lore_csv_path = project_root / data_files.get('lore', 'data/lore.csv')
+    slots_yaml_path = project_root / data_files.get('slots', 'data/slots.yaml')
+    emotion_yaml_path = project_root / data_files.get('emotion_schema', 'data/emotion_schema.yaml')
+    
+    cache_dir_path = project_root / app_config.get('cache_dir', 'runtime/.cache')
+    # --- END MODIFICATION ---
 
-    npc_rows = _safe_csv_rows(NPC_CSV)
-    lore_rows = _safe_csv_rows(LORE_CSV)
-    slot_rules = _safe_yaml(SLOTS_YAML)
-    emotion_schema = _safe_yaml(EMOTION_YAML)
+    cache_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # 构建 allowed_entities（从 lore.entities/tags 聚合）
+    npc_rows = _safe_csv_rows(npc_csv_path)
+    lore_rows = _safe_csv_rows(lore_csv_path)
+    slot_rules = _safe_yaml(slots_yaml_path)
+    emotion_schema = _safe_yaml(emotion_yaml_path)
+
+    # --- This logic is identical to your original ---
+    # Build allowed_entities (aggregated from lore.entities/tags)
     allowed_entities = sorted(list({
         (row.get("entity") or "").strip().lower()
         for row in lore_rows
         if (row.get("entity") or "").strip()
     }))
 
-    # 仅保留 public 可见的 lore
+    # Keep only publicly visible lore
     public_lore = []
     for row in lore_rows:
         vis = (row.get("visibility") or "public").strip().lower()
@@ -70,14 +83,35 @@ def compile_all():
         "slot_rules": slot_rules,
         "emotion_schema_runtime": emotion_schema,
     }
-    return cache
+    return cache, cache_dir_path
 
-# ---------- 入口 ----------
+# ---------- Entrypoint ----------
 def main():
-    cache = compile_all()
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+    
+    # --- MODIFIED: Load config first ---
+    project_root = Path(__file__).parent.parent # This is 'project/'
+    config_path = project_root / "config.yaml"
+    
+    if not config_path.exists():
+        print(f"[compile_data] ERROR: config.yaml not found at: {config_path}")
+        return
+
+    print(f"[compile_data] Loading config from: {config_path}")
+    with config_path.open("r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+    # --- END MODIFICATION ---
+    
+    cache, cache_dir = compile_all(config, project_root)
+    
+    # --- MODIFIED: Use config-driven cache path ---
+    # Note: The filename 'compiled.json' is assumed by controller.py
+    cache_file_path = cache_dir / "compiled.json"
+    # --- END MODIFICATION ---
+
+    with open(cache_file_path, "w", encoding="utf-8") as f:
         json.dump(cache, f, ensure_ascii=False, indent=2)
-    print(f"[ok] cache -> {CACHE_FILE.resolve()}")
+        
+    print(f"[ok] Cache written to -> {cache_file_path.resolve()}")
 
 if __name__ == "__main__":
     main()
