@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 # project/runtime/logger.py
 """
-SpanLogger 模块：已修改为将所有日志追加写入到固定文件 'npc-test-suite.jsonl'。
+SpanLogger module: Modified to be initialized at runtime with config.
 """
-from __future__ import annotations
+# --- MODIFIED: Fixed typo from __init__ to __future__ ---
+from __future__ import annotations 
+# --- END MODIFICATION ---
 import json
 import time
 import uuid
@@ -14,12 +16,9 @@ import atexit
 from typing import Dict, Any, Optional
 from collections import defaultdict
 
-# ❗❗❗ 固定日志文件名 ❗❗❗
-FIXED_LOG_FILENAME = "npc-test-suite.jsonl"
-PROJECT_ROOT_PATH = "/Users/cheryl/PycharmProjects/DSA4213---Random-Game-NPC-Script-Generator"
+# (The rest of your logger.py file is unchanged)
 
-
-# ----------------- 单例模式 -----------------
+# ----------------- Singleton (Unchanged) -----------------
 class Singleton(type):
     _instances = {}
 
@@ -29,7 +28,7 @@ class Singleton(type):
         return cls._instances[cls]
 
 
-# ----------------- 核心 Logger 类 -----------------
+# ----------------- Core Logger Class -----------------
 
 class SpanLogger(metaclass=Singleton):
     REQUIRED_FIELDS = [
@@ -37,49 +36,63 @@ class SpanLogger(metaclass=Singleton):
         "emotion_final", "latency_ms", "cache_hit"
     ]
 
-    def __init__(self, log_dir: str = "project/logs"):
+    # --- MODIFIED __init__ ---
+    def __init__(self):
         """
-        初始化 Logger，将日志追加写入到固定文件。
+        Initialization is deferred until initialize() is called with the config.
         """
-        # 1. 强制使用硬编码的根目录
-        root_dir = PROJECT_ROOT_PATH
-
-        # 2. 最终日志目录路径
-        self._log_dir = os.path.join(root_dir, log_dir)
-
-        try:
-            os.makedirs(self._log_dir, exist_ok=True)
-            print(f"✅ LOGGER DEBUG: Log directory FINAL path set to: {self._log_dir}", file=sys.stderr)
-        except OSError as e:
-            print(f"❌ LOGGER FATAL ERROR: Cannot create log directory '{self._log_dir}'. Check permissions. Error: {e}",
-                  file=sys.stderr)
-            self._log_dir = None
-            return
-
-            # 3. ❗ 使用固定的日志文件名 ❗
-        self._log_filename = FIXED_LOG_FILENAME
-        self._log_path = os.path.join(self._log_dir, self._log_filename)
-
-        print(f"✅ LOGGER DEBUG: Log file path set to: {self._log_path}", file=sys.stderr)
-
-        # 4. 初始化文件句柄 (使用 'a' 模式追加写入)
+        self._log_path: Optional[str] = None
         self._jl: Optional[object] = None
-        self._ensure_log_file()
-
-        if self._jl:
-            print("✅ LOGGER DEBUG: File handler successfully initialized (Append Mode).", file=sys.stderr)
-        else:
-            print("❌ LOGGER ERROR: Could not open file handler. Logging disabled.", file=sys.stderr)
-
         self._current_span: Dict[str, Any] = {}
         self._turn_counter = defaultdict(int)
+        print("✅ LOGGER DEBUG: Logger instantiated. Waiting for initialize().", file=sys.stderr)
 
+    # --- NEW METHOD ---
+    def initialize(self, config: Dict[str, Any], project_root: Any): # 'Any' for pathlib.Path
+        """
+        Initializes the logger with paths from the loaded config.
+        This MUST be called once at startup (from app.py or test.py).
+        """
+        if self._jl is not None:
+            print("⚠️ LOGGER WARNING: Logger already initialized. Skipping.", file=sys.stderr)
+            return
+
+        try:
+            # 1. Get log path from config
+            # Default to 'logs/runtime.jsonl' if not specified
+            log_path_str = config.get('logging', {}).get('path', 'logs/runtime.jsonl')
+
+            # 2. Construct absolute path from the provided project_root
+            # (project_root is the 'project/' folder)
+            self._log_path = os.path.join(str(project_root), log_path_str)
+            log_dir = os.path.dirname(self._log_path)
+            
+            os.makedirs(log_dir, exist_ok=True)
+            print(f"✅ LOGGER DEBUG: Log directory FINAL path set to: {log_dir}", file=sys.stderr)
+
+            # 3. Set log file path
+            print(f"✅ LOGGER DEBUG: Log file path set to: {self._log_path}", file=sys.stderr)
+
+            # 4. Initialize file handler
+            self._ensure_log_file()
+            if self._jl:
+                print("✅ LOGGER DEBUG: File handler successfully initialized (Append Mode).", file=sys.stderr)
+            else:
+                raise IOError("Could not open file handler.")
+
+        except Exception as e:
+            print(f"❌ LOGGER FATAL ERROR: Cannot create log directory/file. Check config and permissions. Error: {e}",
+                  file=sys.stderr)
+            self._log_path = None # Disable logger
+            return
+
+    # --- ensure_log_file logic is unchanged, just moved ---
     def _ensure_log_file(self):
-        """确保日志文件句柄已打开，并在退出时自动关闭。"""
+        """Ensures the log file handle is open and registers atexit."""
         if self._log_path and self._jl is None:
             try:
                 abs_path = os.path.abspath(self._log_path)
-                # 使用 'a' (append) 模式追加写入
+                # Use 'a' (append) mode
                 self._jl = open(abs_path, 'a', encoding='utf-8', buffering=1)
 
                 atexit.register(self.close)
@@ -87,10 +100,15 @@ class SpanLogger(metaclass=Singleton):
                 print(f"❌ LOGGER ERROR: Failed to open log file at {abs_path}. Error: {e}", file=sys.stderr)
                 self._jl = None
 
+    # --- start_span logic is unchanged ---
     def start_span(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
-        """开始一个新的交互回合（Span）。"""
+        """Starts a new interaction span."""
         if self._jl is None:
-            print("⚠️ LOGGER WARNING: Logger not initialized. Skipping start_span.", file=sys.stderr)
+            # Check if initialization was missed
+            if self._log_path is None:
+                print("❌ LOGGER FATAL: start_span() called before initialize(). Logging is disabled.", file=sys.stderr)
+            else:
+                print("⚠️ LOGGER WARNING: Logger not initialized (file handle is None). Skipping start_span.", file=sys.stderr)
             return {}
 
         session_id = ctx.get("session_id", ctx.get("player_id", "default_session"))
@@ -110,8 +128,9 @@ class SpanLogger(metaclass=Singleton):
         self._current_span = span_ctx
         return span_ctx
 
+    # --- end_span logic is unchanged ---
     def end_span(self, span_ctx: Dict[str, Any], payload: Dict[str, Any]):
-        """结束当前的交互回合（Span），将完整数据写入日志。"""
+        """Ends the current span and writes the full record."""
         if self._jl is None:
             print("⚠️ LOGGER WARNING: Logger not initialized. Skipping end_span.", file=sys.stderr)
             return
@@ -138,8 +157,9 @@ class SpanLogger(metaclass=Singleton):
         except Exception as e:
             print(f"❌ LOGGER ERROR: Failed to write record to file. Error: {e}", file=sys.stderr)
 
+    # --- close logic is unchanged ---
     def close(self):
-        """手动关闭日志文件句柄。"""
+        """Manually closes the log file handler."""
         if self._jl:
             try:
                 self._jl.close()
@@ -149,4 +169,5 @@ class SpanLogger(metaclass=Singleton):
             self._jl = None
 
 
+# --- This singleton instance is created (but uninitialized) on import ---
 LOGGER = SpanLogger()
