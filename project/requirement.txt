@@ -1,0 +1,22 @@
+# ==========================================================
+# Project Python Dependencies
+# ==========================================================
+# Run after activating venv: pip install -r requirements.txt
+# ==========================================================
+
+# --- Core Web Server ---
+fastapi
+uvicorn[standard]
+
+# --- Config File Parsing ---
+PyYAML
+
+# --- AI Provider APIs ---
+#Please install all required api libraray as they are required for app.py
+google-genai  # For Gemini
+openai        # For OpenAI
+dashscope     # For Qwen
+
+# --- Data Handling ---
+pandas        # Used by retriever.py to read CSV
+numpy         # Used by generator.py
