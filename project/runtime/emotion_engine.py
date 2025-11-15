@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 emotion_engine.py — Phase 2 · Emotion & Style (Two-step: Pre-Hint → Post-Align)
-
-不生成自然语言，仅输出：
-  1) pre_hint(ctx):  生成前的"弱情绪提示 + 样式钩子"
-  2) post_infer(...): 直接使用模型提供的情绪标签，只做简单验证
-  3) realize_style(...): 情绪 → 样式钩子映射
+(MODIFIED: Reads all weights and thresholds from config)
 """
 
 from __future__ import annotations
@@ -13,20 +9,15 @@ from typing import Dict, Any, List, Tuple, Optional
 import re
 
 # ==================
-# Tunable weights（保持原数值）
+# Tunable weights (REMOVED)
 # ==================
-W_BASE   = 0.20
-W_SLOT   = 0.15
-W_TRIG   = 0.50
-W_INERT  = 0.10
-W_API    = 0.00
-HYST_TAU = 0.25
-STRONG_TRIGGER_SUM = 0.90
+# --- REMOVED: All hardcoded W_... and HYST_TAU variables ---
+# (These will be loaded from config inside the functions)
 
 _WORD = re.compile(r"[a-zA-Z']+")
 
 # ==========================
-# Emotion aliases & fallback（不改）
+# Emotion aliases & fallback (Logic Unchanged)
 # ==========================
 EMOTION_ALIASES = {
     "calm": "neutral", "plain": "neutral", "formal": "serious",
@@ -42,7 +33,7 @@ EMOTION_FALLBACK_CHAIN = {
 }
 
 # ==========================
-# 默认 schema（仅保留 labels/tone_map；清空 demo triggers/content）
+# DEFAULT_SCHEMA (Logic Unchanged)
 # ==========================
 DEFAULT_SCHEMA: Dict[str, Any] = {
     "labels": ["neutral", "friendly", "cheerful", "serious", "annoyed", "sad"],
@@ -52,17 +43,18 @@ DEFAULT_SCHEMA: Dict[str, Any] = {
         "formal":   {"serious": 0.5, "neutral": 0.5},
         "casual":   {"friendly": 0.5, "cheerful": 0.5}
     },
-    "triggers": {},   # ← 清空 demo
-    "content":  {},   # ← 清空 demo
+    "triggers": {},
+    "content":  {},
 }
 
 # =============
-# Util helpers（不改）
+# Util helpers (Logic Unchanged)
 # =============
 def _norm(s: Optional[str]) -> str:
     return (s or "").strip().lower()
 
 def _labels(ctx: Dict[str, Any]) -> List[str]:
+    # (Logic Unchanged)
     labels = list(ctx.get("emotion_schema", {}).get("emotions")
                   or ctx.get("emotion_schema", {}).get("labels")
                   or DEFAULT_SCHEMA["labels"])
@@ -73,26 +65,27 @@ def _labels(ctx: Dict[str, Any]) -> List[str]:
     return out
 
 def _tone_map(ctx: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
+    # (Logic Unchanged)
     return dict(ctx.get("emotion_schema", {}).get("tone_map") or DEFAULT_SCHEMA["tone_map"])
 
 def _triggers(ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    # (Logic Unchanged)
     return dict(ctx.get("emotion_schema", {}).get("triggers") or DEFAULT_SCHEMA["triggers"])
 
 def _content(ctx: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    # (Logic Unchanged)
     return dict(ctx.get("emotion_schema", {}).get("content") or DEFAULT_SCHEMA["content"])
 
 def _blank_scores(labels: List[str]) -> Dict[str, float]:
+    # (Logic Unchanged)
     return {e: 0.0 for e in labels}
 
 def _clamp_to_range(emotion: str, allowed: Any, original_scores: Dict[str, float] = None) -> str:
-    """将情绪钳制到NPC允许的范围内 - 基于原始得分权重"""
+    """Clamps the emotion to the NPC's allowed range - based on original score weight"""
+    # (Logic Unchanged)
     if not allowed:
         return emotion
-    
-    # 规范化输入情绪
     em = EMOTION_ALIASES.get(emotion, emotion).lower()
-    
-    # 处理 allowed 的各种格式
     if isinstance(allowed, str):
         allowed_emotions = [e.strip().lower() for e in allowed.split(',')]
     elif isinstance(allowed, list):
@@ -100,20 +93,17 @@ def _clamp_to_range(emotion: str, allowed: Any, original_scores: Dict[str, float
     else:
         return em
     
-    # 检查情绪是否在允许范围内
     if em in allowed_emotions:
         return em
     else:
-        # 不在范围内，选择允许范围内原始得分最高的情绪
         if original_scores:
             allowed_with_scores = [(e, original_scores.get(e, 0)) for e in allowed_emotions if e in original_scores]
             if allowed_with_scores:
                 return max(allowed_with_scores, key=lambda x: x[1])[0]
-        
-        # 如果没有得分信息或没有匹配的得分，返回第一个允许的情绪
         return allowed_emotions[0] if allowed_emotions else "neutral"
 
 def _mix_into(base: Dict[str, float], add: Dict[str, float], weight: float) -> None:
+    # (Logic Unchanged)
     if weight <= 0.0 or not add:
         return
     for k, v in add.items():
@@ -121,6 +111,7 @@ def _mix_into(base: Dict[str, float], add: Dict[str, float], weight: float) -> N
             base[k] += weight * float(v)
 
 def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
+    # (Logic Unchanged)
     if not scores:
         return scores
     total = sum(max(0.0, v) for v in scores.values())
@@ -136,16 +127,29 @@ def _normalize_scores(scores: Dict[str, float]) -> Dict[str, float]:
     return scores
 
 # ==========================
-# 1) Pre-Hint（不改逻辑）
+# 1) Pre-Hint (MODIFIED)
 # ==========================
-def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
+def pre_hint(ctx: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]: # <-- ADDED config
     labels = _labels(ctx)
     scores = _blank_scores(labels)
     dbg: Dict[str, Any] = {}
 
+    # --- MODIFIED: Load weights from config ---
+    weights = config.get('weights', {})
+    w_base = weights.get('emotion_w_base', 0.20)
+    w_slot = weights.get('emotion_w_slot', 0.15)
+    w_trig = weights.get('emotion_w_trig', 0.50)
+    w_inert = weights.get('emotion_w_inert', 0.10)
+    w_api = weights.get('emotion_w_api', 0.0)
+    
+    thresholds = config.get('thresholds', {})
+    hyst_tau = thresholds.get('emotion_hyst_tau', 0.25)
+    strong_trigger_sum = thresholds.get('emotion_strong_trigger_sum', 0.90)
+    # --- END MODIFICATION ---
+
     base_em = _norm(ctx.get("npc_profile", {}).get("baseline_emotion"))
     if base_em and base_em in scores:
-        scores[base_em] += W_BASE
+        scores[base_em] += w_base # <-- Use config weight
     dbg["baseline"] = base_em or None
 
     slot_name = ctx.get("slot_name") or ""
@@ -159,30 +163,33 @@ def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
         if style_kw in tone_map:
             slot_bias_map = dict(tone_map[style_kw])
     if slot_bias_map:
-        _mix_into(scores, slot_bias_map, W_SLOT)
+        _mix_into(scores, slot_bias_map, w_slot) # <-- Use config weight
     dbg["slot_prior"] = slot_bias_map
 
     trig_votes, trig_hits = _trigger_votes(ctx.get("user_text") or "", ctx)
-    _mix_into(scores, trig_votes, W_TRIG)
+    _mix_into(scores, trig_votes, w_trig) # <-- Use config weight
     dbg["trigger_hits"] = trig_hits
     dbg["trigger_votes"] = trig_votes
 
     last = _norm(ctx.get("last_emotion"))
     if last and last in scores:
-        scores[last] += W_INERT
+        scores[last] += w_inert # <-- Use config weight
     dbg["last_emotion"] = last or None
 
-    if W_API > 0.0 and isinstance(ctx.get("api_votes"), dict):
-        _mix_into(scores, ctx["api_votes"], W_API)
+    if w_api > 0.0 and isinstance(ctx.get("api_votes"), dict):
+        _mix_into(scores, ctx["api_votes"], w_api) # <-- Use config weight
         dbg["api_votes"] = ctx["api_votes"]
 
     scores = _normalize_scores(scores)
     best = max(scores.items(), key=lambda kv: kv[1])[0]
 
     total_trig_mass = sum(float(v) for v in (dbg.get("trigger_votes") or {}).values())
-    strong_trigger = total_trig_mass >= STRONG_TRIGGER_SUM
+    
+    # --- MODIFIED: Use config thresholds ---
+    strong_trigger = total_trig_mass >= strong_trigger_sum
 
-    if not strong_trigger and last and last in scores and (scores[best] - scores[last]) < HYST_TAU:
+    if not strong_trigger and last and last in scores and (scores[best] - scores[last]) < hyst_tau:
+    # --- END MODIFICATION ---
         best = last
         dbg["hysteresis_kept"] = True
     else:
@@ -198,61 +205,73 @@ def pre_hint(ctx: Dict[str, Any]) -> Dict[str, Any]:
     return {"emotion_hint": best, "style_hooks": style, "debug": dbg}
 
 # ===============================
-# 2) Post-Infer（简化版本，直接使用模型情绪）
+# 2) Post-Infer (MODIFIED)
 # ===============================
-def post_infer(output_text: str, draft_emotion: str, ctx: Dict[str, Any]) -> Dict[str, Any]:
+def post_infer(output_text: str, draft_emotion: str, ctx: Dict[str, Any], config: Dict[str, Any]) -> Dict[str, Any]: # <-- ADDED config
     """
-    直接使用模型提供的情绪标签，只做简单验证和置信度评估
+    Uses the model's provided emotion, but calculates confidence based on config heuristics.
     """
     labels = _labels(ctx)
     
-    # 直接使用草稿的情绪标签
     emotion_from_content = draft_emotion
     
-    # 计算置信度（基于文本长度、标点等简单启发式）
-    confidence = _calculate_confidence_based_on_content(output_text)
+    # --- MODIFIED: Pass config to confidence calculator ---
+    confidence = _calculate_confidence_based_on_content(output_text, config=config)
+    # --- END MODIFICATION ---
     
     return {
         "emotion_from_content": emotion_from_content,
         "confidence": confidence,
-        "matches": [],  # 不再需要关键词匹配
+        "matches": [],
         "debug": {
             "source": "draft_emotion",
-            "raw_scores": {emotion_from_content: 1.0},  # 简化
-            "confidence_factors": confidence
+            "raw_scores": {emotion_from_content: 1.0},
+            "confidence_factors": f"base_conf + heuristics (see config['thresholds'])"
         }
     }
 
-def _calculate_confidence_based_on_content(text: str) -> float:
+# --- MODIFIED: Function signature ---
+def _calculate_confidence_based_on_content(text: str, config: Dict[str, Any]) -> float:
+# --- END MODIFICATION ---
     """
-    基于文本内容计算情绪置信度的简单启发式方法
+    Simple heuristic for emotion confidence based on text content, using config values.
     """
     if not text:
         return 0.0
     
-    # 基础置信度
-    confidence = 0.7
+    # --- MODIFIED: Load heuristics from config ---
+    thresh = config.get('thresholds', {})
+    conf_base = thresh.get('emotion_conf_base', 0.7)
+    conf_long_thresh = thresh.get('emotion_conf_long_thresh', 10)
+    conf_long_bonus = thresh.get('emotion_conf_long_bonus', 0.1)
+    conf_short_thresh = thresh.get('emotion_conf_short_thresh', 3)
+    conf_short_penalty = thresh.get('emotion_conf_short_penalty', 0.2)
+    conf_exclaim_bonus = thresh.get('emotion_conf_exclaim_bonus', 0.1)
+    conf_question_bonus = thresh.get('emotion_conf_question_bonus', 0.1)
+    conf_min = thresh.get('emotion_conf_min', 0.3)
+    conf_max = thresh.get('emotion_conf_max', 0.95)
+    # --- END MODIFICATION ---
+
+    confidence = conf_base # <-- Use config value
     
-    # 文本长度因素
     word_count = len(text.split())
-    if word_count >= 10:
-        confidence += 0.1
-    elif word_count <= 3:
-        confidence -= 0.2
+    if word_count >= conf_long_thresh: # <-- Use config value
+        confidence += conf_long_bonus # <-- Use config value
+    elif word_count <= conf_short_thresh: # <-- Use config value
+        confidence -= conf_short_penalty # <-- Use config value
     
-    # 标点符号因素
     if "!" in text:
-        confidence += 0.1  # 感叹号通常表示强烈情绪
+        confidence += conf_exclaim_bonus # <-- Use config value
     if "?" in text and text.count("?") > 1:
-        confidence += 0.1  # 多个问号可能表示强烈情绪
+        confidence += conf_question_bonus # <-- Use config value
     
-    # 确保置信度在合理范围内
-    return max(0.3, min(0.95, confidence))
+    return max(conf_min, min(conf_max, confidence)) # <-- Use config values
 
 # ==============================
-# 3) Style realization（不改逻辑）
+# 3) Style realization (Logic Unchanged)
 # ==============================
 def realize_style(emotion: str, style_map: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    # (Logic Unchanged)
     em = EMOTION_ALIASES.get(emotion, emotion) if emotion else "neutral"
     style: Dict[str, Any] = {"prefix": [], "suffix": [], "tone": (em or "neutral")}
 
@@ -279,9 +298,10 @@ def realize_style(emotion: str, style_map: Optional[Dict[str, Any]]) -> Dict[str
     return style
 
 # ==========================================
-# Internal: trigger votes（不改逻辑；只是依赖上游 schema）
+# Internal: trigger votes (Logic Unchanged)
 # ==========================================
 def _trigger_votes(text: str, ctx: Dict[str, Any]) -> Tuple[Dict[str, float], List[str]]:
+    # (Logic Unchanged)
     t = _norm(text)
     labels = _labels(ctx)
     scores = _blank_scores(labels)
