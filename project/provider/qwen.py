@@ -19,13 +19,13 @@ except ImportError:
 
 
 class QwenProvider(BaseProvider):
-    def __init__(self, config: dict, apikey=os.getenv("DASHSCOPE_API_KEY")):
+    def __init__(self, config: dict, apikey=os.getenv("QWEN_API_KEY")):
         """
         Initialize the Qwen (Dashscope) provider, reading settings from the config dict.
         """
-        if os.getenv("DASHSCOPE_API_KEY"):
-            print("API key loaded from environment variable (DASHSCOPE_API_KEY).")
-            dashscope.api_key = os.getenv("DASHSCOPE_API_KEY")
+        if os.getenv("QWEN_API_KEY"):
+            print("API key loaded from environment variable (QWEN_API_KEY).")
+            dashscope.api_key = os.getenv("QWEN_API_KEY")
         else:
             print("API key not in env, using provided 'apikey' parameter.")
             dashscope.api_key = apikey
