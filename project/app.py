@@ -1,140 +1,180 @@
 # app.py
 """
-项目的主 Web 服务器 (HTTP 接口)。
-它负责：
-1. 在启动时，加载所有模型和组件 (与 test.py 类似)。
-2. 提供一个 API 端点 (e.g., /npc_reply) 来接收 Demo 的请求。
-3. 调用 controller.run_once 来处理请求。
-4. 将结果以 JSON 格式返回给 Demo。
+The project's main Web Server (HTTP interface).
+(MODIFIED: Fully integrated with config-driven modules)
 """
 
 import sys
+import yaml 
 from pathlib import Path
 from typing import Dict, Any
 
-# --- 1. 设置 sys.path (与 test.py 相同) ---
-# 确保所有 provider/ 和 runtime/ 模块都能被找到
+# --- 1. Set sys.path (Same as before) ---
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-# --- 2. 导入 FastAPI 和项目核心组件 ---
+# --- 2. Import FastAPI and project core components ---
 try:
     import uvicorn
     from fastapi import FastAPI
 except ImportError:
-    print("错误: 缺少 FastAPI 或 Uvicorn。")
-    print("请运行: pip install fastapi uvicorn[standard]")
+    print("Error: FastAPI or Uvicorn not found.")
+    print("Please run: pip install fastapi uvicorn[standard]")
     sys.exit(1)
 
 try:
     from runtime.controller import run_once, load_compiled
+    
+    # --- Imports (Unchanged) ---
+    from provider.base import BaseProvider
+    from provider.gemini import GeminiProvider
+    from provider.openai import OpenAIProvider
     from provider.qwen import QwenProvider
-    from provider.generator import Generator
+    
+    # (Assuming your generator is in provider/ as per test.py)
+    from provider.generator import Generator 
     from provider.oocChecker import OOCChecker
     from provider.memory_store import MemoryStore
     from provider.memory_summarizer import MemorySummarizer
+    
+    # --- MODIFIED: Import the logger ---
+    from runtime.logger import LOGGER 
+
 except ImportError as e:
-    print(f"项目内部导入失败: {e}")
-    print("请确保 __init__.py 文件存在于 provider/ 和 runtime/ 目录中。")
+    print(f"Project internal import failed: {e}")
+    print(">>> FAILED. DID YOU CREATE THE '__init__.py' FILES in /provider and /runtime? <<<")
     sys.exit(1)
 
-# --- 3. FastAPI 应用实例 ---
+# --- 3. FastAPI App Instance ---
 app = FastAPI(
     title="NPC AI Project API",
-    description="连接 Pygame Demo 和 AI Controller 的 HTTP 接口"
+    description="HTTP interface connecting the Pygame Demo to the AI Controller"
 )
 
-# --- 4. 全局状态 (用于保存已初始化的组件) ---
-# 这是一个字典，用于在服务器启动时保存所有昂贵的组件
-# 这样我们就不必在每次请求时都重新加载它们
+# --- 4. Global State ---
 CORE_COMPONENTS: Dict[str, Any] = {}
 
 
 @app.on_event("startup")
 def load_core_components():
     """
-    服务器启动时执行一次：加载所有模型、数据和组件。
-    这与 test.py 中的 _initialize_providers 逻辑相同。
+    Runs once on server startup: Loads config, data, and all components.
     """
-    print("服务器启动中... 正在加载核心组件...")
+    print("Server starting up... Loading core components...")
     
     try:
-        # 1. 加载编译数据
-        compiled_data = load_compiled()
+        # 1. --- Load Configuration ---
+        # --- MODIFIED: Corrected config path (assumes config.yaml is IN project/) ---
+        config_path = PROJECT_ROOT / "config.yaml" 
+        if not config_path.exists():
+            raise FileNotFoundError(f"config.yaml not found at {config_path}")
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+            # --- MODIFIED: Initialize Logger ---
+            LOGGER.initialize(config=config, project_root=PROJECT_ROOT)
+            
+        CORE_COMPONENTS["config"] = config
+        print(f"✅ 'config.yaml' loaded. Provider set to: {config.get('provider', {}).get('name')}")
+
+        # 2. Load Compiled Data
+        # --- MODIFIED: Pass config and project_root to load_compiled ---
+        compiled_data = load_compiled(config=config, project_root=PROJECT_ROOT) 
         CORE_COMPONENTS["compiled_data"] = compiled_data
-        print(f"✅ 'compiled.json' (含 {len(compiled_data.get('npc',[]))} NPCs) 加载成功。")
+        print(f"✅ 'compiled.json' (incl. {len(compiled_data.get('npc',[]))} NPCs) loaded.")
 
-        # 2. 初始化 Provider (假设 QwenProvider 不需要 API key)
-        # 注意：如果您的 QwenProvider 依赖环境变量，请确保在此处设置
-        provider = QwenProvider()
-        CORE_COMPONENTS["provider"] = provider
-        print("✅ Provider (QwenProvider) 初始化成功。")
+        # 3. --- Provider Factory (Logic Unchanged) ---
+        provider_name = config.get('provider', {}).get('name', 'openai')
+        provider_instance: BaseProvider
 
-        # 3. 初始化 Generator 和 OOCChecker
-        generator = Generator(provider)
+        print(f"[Factory] Initializing provider: '{provider_name}'")
+        if provider_name == 'gemini':
+            provider_instance = GeminiProvider(config=config)
+        elif provider_name == 'openai':
+            provider_instance = OpenAIProvider(config=config)
+        elif provider_name == 'qwen':
+            provider_instance = QwenProvider(config=config)
+        else:
+            raise ValueError(f"Unknown provider name in config: '{provider_name}'")
+        
+        CORE_COMPONENTS["provider"] = provider_instance
+        print(f"✅ Provider ({provider_name}) initialized.")
+        # --- End Factory ---
+
+        # 4. Initialize Generator and OOCChecker
+        # --- MODIFIED: Pass config to all component constructors ---
+        generator = Generator(provider_instance, config=config)
         CORE_COMPONENTS["generator"] = generator
-        ooc_checker = OOCChecker(provider)
+        
+        ooc_checker = OOCChecker(provider_instance, config=config)
         CORE_COMPONENTS["ooc_checker"] = ooc_checker
-        print("✅ Generator 和 OOCChecker 初始化成功。")
+        print("✅ Generator and OOCChecker initialized.")
 
-        # 4. 初始化记忆模块 (修复：路径在 'project/' 内部)
-        memory_store = MemoryStore(longterm_path="project/data/memory_longterm.csv")
+        # 5. Initialize Memory modules
+        # --- MODIFIED: Pass config and project_root to MemoryStore ---
+        memory_store = MemoryStore(config=config, project_root=PROJECT_ROOT)
         CORE_COMPONENTS["memory_store"] = memory_store
         
-        memory_summarizer = MemorySummarizer(provider, ooc_checker)
+        # --- MODIFIED: Pass config to MemorySummarizer ---
+        memory_summarizer = MemorySummarizer(provider_instance, ooc_checker, config=config)
         CORE_COMPONENTS["memory_summarizer"] = memory_summarizer
-        print("✅ MemoryStore 和 MemorySummarizer 初始化成功。")
+        print(f"✅ MemoryStore and MemorySummarizer initialized.")
+        # --- END ALL MODIFICATIONS ---
         
-        print("\n🎉 所有核心组件加载完毕。服务器准备就绪。\n")
+        print("\n🎉 All core components loaded. Server is ready.\n")
         
     except Exception as e:
-        print(f"❌ CRITICAL: 服务器启动失败，加载组件时出错: {e}")
-        # 在真实应用中，这里应该让服务器启动失败
-        # raise e
+        print(f"❌ CRITICAL: Server startup failed while loading components: {e}")
+        import traceback
+        traceback.print_exc()
+        raise e
 
 
 @app.get("/npc_reply")
 def get_npc_reply_endpoint(
     npc_id: str, 
     player: str, 
-    player_id: str = "P001_Demo" # Demo 暂未提供 player_id，我们用一个固定的
+    player_id: str = "P001_Demo"
 ):
     """
-    这是 Demo (main.py) 将要调用的主 API 端点。
-    它与 main.py 中的 API_URL 匹配。
+    This is the main API endpoint that the Demo (main.py) will call.
     """
     
-    # 1. 从全局状态中获取已初始化的组件
+    # 1. Get initialized components from global state
+    # --- MODIFIED: Get config from global state ---
+    config = CORE_COMPONENTS.get("config")
     generator = CORE_COMPONENTS.get("generator")
     ooc_checker = CORE_COMPONENTS.get("ooc_checker")
     compiled_data = CORE_COMPONENTS.get("compiled_data")
     memory_store = CORE_COMPONENTS.get("memory_store")
     memory_summarizer = CORE_COMPONENTS.get("memory_summarizer")
     
-    if not all([generator, ooc_checker, compiled_data, memory_store, memory_summarizer]):
-        return {"text": "(错误: 服务器核心组件未正确加载)", "emotion": "sad"}
+    if not all([config, generator, ooc_checker, compiled_data, memory_store, memory_summarizer]):
+        return {"text": "(Error: Server core components not loaded correctly)", "emotion": "sad"}
 
-    print(f"收到请求: NPC={npc_id}, Player={player}")
+    print(f"Request received: NPC={npc_id}, Player={player}")
 
-    # 2. 调用我们的核心逻辑
+    # 2. Call the core logic
     try:
+        # --- MODIFIED: Pass 'config' and 'memory_path' to run_once ---
         result = run_once(
             user_text=player,
             npc_id=npc_id,
             player_id=player_id,
+            config=config, # <-- ADDED
+            memory_path=memory_store.longterm_path, # <-- ADDED
             generator=generator,
             ooc_checker=ooc_checker,
             compiled_data=compiled_data,
             memory_store=memory_store,
             memory_summarizer=memory_summarizer,
-            last_emotion=None # (简单起见，暂不管理会话状态)
+            last_emotion=None
         )
+        # --- END MODIFICATION ---
         
-        # 3. 返回 Demo (main.py) 期望的格式
-        # main.py 期望一个 "text" 字段
-        final_text = result.get("final_text", "(无文本)")
+        # 3. Return the format (Logic Unchanged)
+        final_text = result.get("final_text", "(No text)")
         final_emotion = result.get("final_emotion", "unknown")
-
         display_text = f"{final_text}  ({final_emotion})"
 
         return {
@@ -144,14 +184,15 @@ def get_npc_reply_endpoint(
         }
 
     except Exception as e:
-        print(f"❌ Controller.run_once 执行时出错: {e}")
-        return {"text": f"(Controller 错误: {e})", "emotion": "sad"}
+        print(f"❌ Error during controller.run_once execution: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"text": f"(Controller Error: {e})", "emotion": "sad"}
 
 
 if __name__ == "__main__":
     """
-    允许你通过 'python project/app.py' 来直接运行这个服务器。
+    Allows you to run this server directly with 'python project/app.py'
     """
-    print("正在启动 Uvicorn 服务器，监听 http://127.0.0.1:8000")
-    # 注意：app="app:app" 意味着 "运行 app.py 文件中的 app 变量"
+    print("Starting Uvicorn server, listening on http://127.0.0.1:8000")
     uvicorn.run("app:app", host="127.0.0.1", port=8000, reload=True)
