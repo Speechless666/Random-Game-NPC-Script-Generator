@@ -1,0 +1,222 @@
+# ===================================================================
+# PlannoAPI v4.0 - Main Configuration File
+# -------------------------------------------------------------------
+# This file controls all modules, paths, thresholds, and weights
+# for the AI runtime.
+# ===================================================================
+
+app:
+  # 'dev' (development) or 'prod' (production)
+  env: dev
+  
+  # Directory for general log files (relative to 'project/' folder)
+  log_dir: logs/
+  
+  # Directory where compiled.json is read/written (relative to 'project/' folder)
+  cache_dir: runtime/.cache
+  
+  # Default retry attempts for API calls that fail JSON parsing
+  json_retry: 2
+  
+  # A global hard limit for the *maximum* new tokens the API will generate.
+  max_new_tokens: 64
+  
+  # Language code for prompts (currently 'en')
+  language: en
+
+# ===================================================================
+# Data & Validation
+# -------------------------------------------------------------------
+# All file paths are relative to the 'project/' folder.
+# Used by: compile_data.py
+# ===================================================================
+
+data_files:
+  # Input CSV for NPC profiles
+  npc: "data/npc.csv"
+  
+  # Input CSV for world lore and facts
+  lore: "data/lore.csv"
+  
+  # Input YAML defining dialogue slots (e.g., 'past_story')
+  slots: "data/slots.yaml"
+  
+  # Input YAML for emotion definitions
+  emotion_schema: "data/emotion_schema.yaml"
+  
+  # Output CSV for long-term memory (read/write)
+  memory_longterm: "data/memory_longterm.csv"
+  
+  # Input CSV for red-teaming (evaluation)
+  redteam: "data/redteam.csv"
+
+validation_rules:
+  # Defines the *only* allowed values for the 'visibility' column in lore.csv
+  # Used by: validators.py
+  lore_visibility: ["public", "secret"]
+
+# ===================================================================
+# AI Provider & Sampling
+# -------------------------------------------------------------------
+# Controls which LLM to use and how it generates text.
+# Used by: app.py, gemini.py, openai.py, qwen.py
+# ===================================================================
+
+provider:
+  # The provider to load. MUST match the class name in app.py
+  # Options: 'gemini', 'openai', 'qwen'
+  name: gemini
+  
+  # The specific model ID to call (e.g., "gemini-1.5-flash", "gpt-4o-mini", "qwen-turbo")
+  model: gemini-2.5-flash
+  
+  # Max time to wait for an API response
+  timeout_s: 30
+  
+  # Max retries for network-level failures
+  max_retries: 2
+  
+  # (OpenAI/Qwen only) Force the model to output JSON.
+  json_mode: true
+
+sampling:
+  # 0.0 = deterministic, >1.0 = very random.
+  temperature: 0.6
+  
+  # Nucleus sampling. 0.95 means use top 95% most probable tokens.
+  top_p: 0.95
+  
+  # (OpenAI/Qwen only) Penalizes new tokens based on whether they appear in the text so far.
+  presence_penalty: 0.0
+  
+  # (OpenAI/Qwen only) Penalizes new tokens based on their frequency in the text so far.
+  frequency_penalty: 0.1
+
+# ===================================================================
+# Emotion Weights
+# -------------------------------------------------------------------
+# Controls the 'pre_hint' logic in emotion_engine.py
+# ===================================================================
+
+weights:
+  # How much the NPC's baseline emotion influences the hint
+  emotion_w_base: 0.20
+  
+  # How much the current dialogue 'slot' influences the hint
+  emotion_w_slot: 0.15
+  
+  # How much trigger words in user text influence the hint
+  emotion_w_trig: 0.50
+  
+  # "Inertia". How much the *previous* emotion state influences the hint
+  emotion_w_inert: 0.10
+  
+  # (Not used) Weight for an external API's emotion vote
+  emotion_w_api: 0.00
+
+# ===================================================================
+# System Thresholds
+# -------------------------------------------------------------------
+# All "magic numbers" that control the AI's decision-making.
+# ===================================================================
+
+thresholds:
+  # --- oocChecker.py / memory_summarizer.py ---
+  # Risk score from 0.0-1.0. Any OOC risk *above* this will be flagged/rejected.
+  ooc_high: 0.7
+
+  # --- controller.py ---
+  # Confidence score for the 'qrouter' to be considered valid.
+  router_fallback_confidence: 0.35 # (Was hardcoded as 0.35)
+
+  # --- filters.py ---
+  # If true, block any 'unknown_entity' (even if not 'secret').
+  filters_strict_unknown_entity: true
+
+  # --- qrouter.py ---
+  # Confidence *below* this will force a fallback to 'small_talk'.
+  qrouter_fallback_threshold: 0.15
+  # The new confidence score to assign after a fallback.
+  qrouter_fallback_new_conf: 0.35
+  # PRF: Score *below* this enables phrase-based matching.
+  qrouter_prf_score_threshold: 0.3
+  # PRF: Weight to apply to phrase matches.
+  qrouter_prf_phrase_weight: 0.7
+  # Confidence *below* this will not attempt to find a 'must' keyword.
+  qrouter_must_decision_threshold: 0.35
+
+  # --- retriever.py (Memory) ---
+  retriever_mem_max: 5
+  retriever_mem_min_score: 2.0
+  retriever_mem_min_user_words: 2
+  retriever_mem_user_weight: 3.0
+  retriever_mem_mem_weight: 2.0
+  
+  # --- retriever.py (Lore) ---
+  retriever_lore_max: 5
+  retriever_lore_entity_bonus: 3
+  retriever_lore_mem_max: 3
+  retriever_lore_mem_min_score: 1.5
+
+  # --- emotion_engine.py (Pre-Hint) ---
+  # How much 'stronger' a new emotion must be to overcome inertia.
+  emotion_hyst_tau: 0.25
+  # The total vote mass required to be a "strong trigger" (bypasses inertia).
+  emotion_strong_trigger_sum: 0.90
+  
+  # --- emotion_engine.py (Post-Infer Confidence) ---
+  emotion_conf_base: 0.7
+  emotion_conf_long_thresh: 10     # word count >= this
+  emotion_conf_long_bonus: 0.1
+  emotion_conf_short_thresh: 3     # word count <= this
+  emotion_conf_short_penalty: 0.2
+  emotion_conf_exclaim_bonus: 0.1
+  emotion_conf_question_bonus: 0.1
+  emotion_conf_min: 0.3
+  emotion_conf_max: 0.95
+  
+  # (These were in your original config, but are not used by the files you provided)
+  emotion_align_distance: 0.5
+  post_infer_min_conf: 0.7
+  insufficient_blocks_non_past: true
+
+# ===================================================================
+# Memory Policy
+# -------------------------------------------------------------------
+# Controls the behavior of memory_store.py and summarizer.
+# ===================================================================
+
+memory_policy:
+  # The max number of events to keep in the short-term dialogue window.
+  short_window_k: 8
+  
+  # The default number of facts to pull from long-term memory.
+  retrieval_top_k: 5
+  
+  # The number of facts the summarizer should try to generate.
+  summarize_batch_size: 1
+
+  # (Weights for a future 'writeback' policy, not currently used)
+  writeback:
+    recency_weight: 0.4
+    repetition_weight: 0.3
+    task_relevance_weight: 0.2
+    emotion_intensity_weight: 0.1
+    min_score: 0.68
+    max_items: 200
+
+# ===================================================================
+# Caching & Logging
+# ===================================================================
+
+cache:
+  enabled: true
+  type: filekv
+
+logging:
+  level: INFO
+  json_lines: true
+  
+  # The main output log file for all runtime events
+  # (Relative to 'project/' folder)
+  path: logs/runtime.jsonl
