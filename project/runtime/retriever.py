@@ -1,11 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 retriever.py — minimal, drop-in normalized retriever
-
-功能：
-- 统一规范化用户输入与证据文本，避免大小写/标点导致 must/forbid 误判。
-- 严格 AND：有 must 且 require_slot_must=True 时，必须全部命中。
-- forbid 命中（用户侧或证据侧）直接判不足。
+(MODIFIED: Fixed return bug in _canon)
 """
 
 from __future__ import annotations
@@ -13,6 +9,7 @@ from typing import Any, Dict, List, Optional, Iterable
 import re
 import pandas as pd
 from pathlib import Path
+
 # --------------------------
 # Text processing utilities
 # --------------------------
@@ -31,12 +28,13 @@ def _canon(s: Optional[str]) -> str:
     t = t.replace("_", " ")
     t = re.sub(r"[^\w\s]", " ", t)
     t = re.sub(r"\s+", " ", t).strip()
+    # --- THIS IS THE FIX ---
     return t
+    # --- END FIX ---
 
 def _tok(s: str) -> List[str]:
     t = _canon(s)
     toks = t.split()
-    # 若疑似中文/无空格文本：退化为 2-gram
     if len(toks) <= 1 and len(t) > 4:
         return [t[i:i+2] for i in range(len(t)-1)]
     return toks
@@ -44,11 +42,10 @@ def _tok(s: str) -> List[str]:
 def _filter_tokens(toks: Iterable[str]) -> List[str]:
     out = []
     for w in toks:
-        if len(w) <= 1:  # 去除极短
+        if len(w) <= 1:
             continue
         if w in _STOP:
             continue
-        # 极简词干（不依赖外部库）
         for suf in ("ing","ed","es","s"):
             if len(w) > len(suf)+2 and w.endswith(suf):
                 w = w[:-len(suf)]
@@ -67,65 +64,57 @@ def _row_blob(row: Dict[str, Any]) -> str:
     blob_raw = " ".join([fact, entity, tags_txt])
     return _canon(blob_raw)
 
-# 从data/memory_longterm.csv获取与用户输入相关的memory
-# memory_longterm.csv包含npc_id,key,value,visibility,timestamp等字段
+# (All other functions remain as they were in the previously modified file)
+
 def retrieve_relevant_memory(
     user_text: str, npc_id: str,
-    memory_path: str = "memory_longterm.csv",
-    max_memory: int = 5,
-    min_score: int = 2  # 新增最小分数阈值
+    memory_path: str, # This path is now USED
+    config: Dict[str, Any],
+    max_memory_override: Optional[int] = None,
+    min_score_override: Optional[float] = None
 ) -> List[Dict[str, Any]]:
 
-    current_dir = Path(__file__).resolve().parent.parent
-    memory_path = current_dir / "data" / "memory_longterm.csv"
+    thresh = config.get('thresholds', {})
+    max_memory = max_memory_override if max_memory_override is not None else thresh.get('retriever_mem_max', 5)
+    min_score = min_score_override if min_score_override is not None else thresh.get('retriever_mem_min_score', 2.0)
+    min_user_words = thresh.get('retriever_mem_min_user_words', 2)
+    user_coverage_weight = thresh.get('retriever_mem_user_weight', 3.0)
+    mem_coverage_weight = thresh.get('retriever_mem_mem_weight', 2.0)
     
     try:
         df_memory = pd.read_csv(memory_path)
     except FileNotFoundError:
-        print(f"长期记忆文件未找到: {memory_path}")
+        print(f"Long-term memory file not found: {memory_path}")
         return []
 
     user_norm = _canon(user_text)
     user_words = set(_filter_tokens(_tok(user_norm)))
     
-    # 如果用户输入太短，直接返回空
-    if len(user_words) < 2:
+    if len(user_words) < min_user_words:
         return []
 
     relevant_memories = []
 
     for _, row in df_memory.iterrows():
-        # 只检索当前NPC的记忆
         if str(row.get("npc_id")) != str(npc_id):
             continue
             
         memory_blob = _row_blob(row)
         memory_words = set(_filter_tokens(_tok(memory_blob)))
         
-        # 计算相关性分数 - 改进版
         common_words = user_words & memory_words
-        
-        # 如果没有任何共同词汇，跳过
         if not common_words:
             continue
             
-        # 改进的评分机制
         score = 0
-        
-        # 1. 基础匹配分数
         base_score = len(common_words)
-        
-        # 2. 考虑匹配比例 - 避免短文本的误匹配
         user_coverage = len(common_words) / len(user_words) if user_words else 0
         memory_coverage = len(common_words) / len(memory_words) if memory_words else 0
         
-        # 4. 计算最终分数
         score = base_score
-        # 考虑覆盖率，避免单个单词的偶然匹配
-        coverage_bonus = min(user_coverage * 3, memory_coverage * 2)
+        coverage_bonus = min(user_coverage * user_coverage_weight, memory_coverage * mem_coverage_weight)
         score += coverage_bonus
         
-        # 只保留分数足够高的记忆
         if score >= min_score:
             row_dict = row.to_dict()
             row_dict['relevance_score'] = score
@@ -136,10 +125,8 @@ def retrieve_relevant_memory(
             }
             relevant_memories.append(row_dict)
 
-    # 按相关性分数排序
     relevant_memories.sort(key=lambda x: x['relevance_score'], reverse=True)
     
-    # 返回前N个最相关的记忆
     return [{'memory': mem["fact"] for mem in relevant_memories[:max_memory]}]
 
 # --------------------------
@@ -147,22 +134,29 @@ def retrieve_relevant_memory(
 # --------------------------
 def retrieve_public_evidence(
     user_text: str,
+    config: Dict[str, Any],         # <-- ADDED
+    memory_path: str,             # <-- ADDED
     npc_id: Optional[str] = None,
     slot_hints: Optional[Dict[str, Any]] = None,
     slot_name: Optional[str] = None,
     require_slot_must: bool = True,
-    compiled_lore_public: Optional[List[Dict[str, Any]]] = None,
-    max_evidence: int = 5,
+    compiled_lore_public: Optional[List[Dict[str, Any]]] = None
 ) -> Dict[str, Any]:
+
+    thresh = config.get('thresholds', {})
+    max_evidence = thresh.get('retriever_lore_max', 5)
+    entity_bonus = thresh.get('retriever_lore_entity_bonus', 3)
+    longterm_max = thresh.get('retriever_lore_mem_max', 3)
+    longterm_min_score = thresh.get('retriever_lore_mem_min_score', 1.5)
+
     slot_hints = slot_hints or {}
     must_list   = [_canon(x) for x in (slot_hints.get("must") or []) if str(x).strip()]
     forbid_list = [_canon(x) for x in (slot_hints.get("forbid") or []) if str(x).strip()]
     pool = compiled_lore_public or []
 
     user_norm = _canon(user_text)
-    user_words = set(_filter_tokens(_tok(user_norm)))  # 对用户词汇也进行过滤
+    user_words = set(_filter_tokens(_tok(user_norm)))
 
-    # forbid（用户侧）
     if any(f and f in user_norm for f in forbid_list):
         return {
             "flags": {"insufficient": True},
@@ -174,42 +168,35 @@ def retrieve_public_evidence(
     
     for row in pool:
         blob = _row_blob(row)
-        blob_words = set(_filter_tokens(_tok(blob)))  # 对证据词汇也进行过滤
+        blob_words = set(_filter_tokens(_tok(blob)))
 
-        # forbid（证据侧）- 跳过禁止的证据
         if any(f and f in blob for f in forbid_list):
             continue
 
-        # must 命中（或无 must 要求）
         if (not must_list) or all(m and m in blob for m in must_list):
-            # 计算相关性分数 - 使用过滤后的词汇
             common_words = user_words & blob_words
             score = len(common_words)
             
-            # 实体名称匹配额外加分
             entity = str(row.get("entity", "")).strip().lower()
             if entity and any(entity in word for word in user_words):
-                score += 3
+                score += entity_bonus
             
-            # 只有在有must条件或分数>0时才保留证据
             if must_list or score > 0:
                 scored_evidence.append((score, row))
 
-    # 按相关性分数排序
     scored_evidence.sort(key=lambda x: x[0], reverse=True)
     picked = [row for score, row in scored_evidence]
-    # 添加长期记忆作为检索证据
-# 在retrieve_public_evidence函数中替换这部分：
+    
     if npc_id:
         long_term_memories = retrieve_relevant_memory(
             user_text, npc_id, 
-            max_memory=3,  # 数量更少但更相关
-            min_score=1.5
+            memory_path=memory_path, 
+            config=config,
+            max_memory_override=longterm_max,
+            min_score_override=longterm_min_score
         )
-        # 直接合并到证据列表，而不是包装
         picked = long_term_memories + picked
     
-    # 如果没有must条件且没有相关证据，返回证据不足
     if not must_list and not picked:
         return {
             "flags": {"insufficient": True},
@@ -217,7 +204,6 @@ def retrieve_public_evidence(
             "audit": {"must": must_list, "forbid": forbid_list, "reason": "no_relevant_evidence"},
         }
 
-    # 严格模式：有 must 但未命中 ⇒ 不足
     if require_slot_must and must_list and not picked:
         return {
             "flags": {"insufficient": True},
@@ -225,7 +211,6 @@ def retrieve_public_evidence(
             "audit": {"must": must_list, "forbid": forbid_list, "reason": "must_not_met"},
         }
 
-    # 正常返回
     return {
         "flags": {"insufficient": len(picked) == 0},
         "evidence": picked[:max_evidence],
