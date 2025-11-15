@@ -19,7 +19,7 @@ app:
   json_retry: 2
   
   # A global hard limit for the *maximum* new tokens the API will generate.
-  max_new_tokens: 64
+  max_new_tokens: 300
   
   # Language code for prompts (currently 'en')
   language: en
@@ -65,10 +65,10 @@ validation_rules:
 provider:
   # The provider to load. MUST match the class name in app.py
   # Options: 'gemini', 'openai', 'qwen'
-  name: gemini
+  name: qwen
   
   # The specific model ID to call (e.g., "gemini-1.5-flash", "gpt-4o-mini", "qwen-turbo")
-  model: gemini-2.5-flash
+  model: qwen-plus
   
   # Max time to wait for an API response
   timeout_s: 30
