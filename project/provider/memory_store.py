@@ -1,45 +1,77 @@
-# runtime/memory_store.py
+# provider/memory_store.py
 """
-本模块实现一个简单的记忆存储管理器（MemoryStore）。
-(基于 fixmemory_store.py 的简洁设计)
+This module implements a simple memory storage manager (MemoryStore).
+(MODIFIED: Reads all paths and limits from config)
 """
 
 from collections import deque
 import csv, os
-from typing import List, Optional, Dict, Any # <-- 导入 Dict, Any
+from typing import List, Optional, Dict, Any 
 import datetime
+from pathlib import Path # <-- ADDED
 
 class MemoryStore:
-    """记忆存储管理类。"""
+    """Memory storage management class."""
 
-    def __init__(self, short_window=5, longterm_path="data/memory_longterm.csv"):
-        self.short_memory = deque(maxlen=short_window)
-        self.longterm_path = longterm_path
+    # --- MODIFIED: __init__ now accepts config and project_root ---
+    def __init__(self, config: dict, project_root: Path):
+        self.config = config
+        
+        # 1. Get short_window size from config
+        memory_policy = config.get('memory_policy', {})
+        short_window_k = memory_policy.get('short_window_k', 8)
+        self.short_memory = deque(maxlen=short_window_k)
+        
+        # 2. Construct longterm_path from config
+        data_files = config.get('data_files', {})
+        longterm_path_str = data_files.get('memory_longterm', 'data/memory_longterm.csv')
+        # (Builds path like .../project/data/memory_longterm.csv)
+        self.longterm_path = str(project_root / longterm_path_str) 
+        
+        print(f"[MemoryStore] Initialized. Short-term window: {short_window_k}, Long-term path: {self.longterm_path}")
 
-        if not os.path.exists(longterm_path):
-            with open(longterm_path, "w", newline='') as f:
-                writer = csv.writer(f)
-                writer.writerow(["player_id", "npc_id", "fact", "emotion", "timestamp"])
+        # 3. Create file if it doesn't exist (Logic Unchanged)
+        if not os.path.exists(self.longterm_path):
+            try:
+                # Ensure directory exists
+                os.makedirs(os.path.dirname(self.longterm_path), exist_ok=True)
+                with open(self.longterm_path, "w", newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["player_id", "npc_id", "fact", "emotion", "timestamp"])
+            except Exception as e:
+                print(f"FATAL [MemoryStore] Could not create log file at {self.longterm_path}: {e}")
+    # --- END MODIFICATION ---
 
     def append_event(self, event: dict):
-        """将一个交互事件追加到短期记忆队列。"""
+        """Appends an interaction event to the short-term memory queue."""
         self.short_memory.append(event)
 
     def get_short_window(self, k: Optional[int] = None) -> List[dict]:
-        """返回短期记忆的切片。"""
-        return list(self.short_memory)[-k:] if k else list(self.short_memory)
+        """Returns a slice of short-term memory."""
+        # --- MODIFIED: Read 'k' from config if not provided ---
+        if k is None:
+            # Reads from memory_policy.short_window_k
+            k = self.config.get('memory_policy', {}).get('short_window_k', 8)
+        # --- END MODIFICATION ---
+        return list(self.short_memory)[-k:]
 
-    def retrieve_longterm(self, player_id: str, npc_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """检索长期记忆"""
+    # --- MODIFIED: retrieve_longterm now reads top_k from config ---
+    def retrieve_longterm(self, player_id: str, npc_id: str, top_k: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Retrieves long-term memories"""
+        
+        if top_k is None:
+            # (You should add 'retrieval_top_k: 5' to your config.yaml 'memory_policy')
+            top_k = self.config.get('memory_policy', {}).get('retrieval_top_k', 5)
+            
         try:
-            if not os.path.exists(self.longterm_path): # <-- 修复：使用 self.longterm_path
+            if not os.path.exists(self.longterm_path):
                 return []
             
-            with open(self.longterm_path, 'r', encoding='utf-8') as f: # <-- 修复：使用 self.longterm_path
+            with open(self.longterm_path, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 
                 if not reader.fieldnames or 'player_id' not in reader.fieldnames:
-                    print(f"警告: 长期记忆文件缺少必要的列，字段名: {reader.fieldnames}")
+                    print(f"Warning: Long-term memory file is missing required columns. Fields: {reader.fieldnames}")
                     return []
                 
                 facts = []
@@ -49,7 +81,7 @@ class MemoryStore:
                             row.get("npc_id") == npc_id):
                             facts.append(row)
                     except KeyError as e:
-                        print(f"警告: 跳过记忆文件中的无效行，缺失字段: {e}")
+                        print(f"Warning: Skipping invalid row in memory file, missing field: {e}")
                         continue
                     
                     if len(facts) >= top_k:
@@ -58,15 +90,16 @@ class MemoryStore:
                 return facts
                 
         except Exception as e:
-            print(f"检索长期记忆失败: {e}")
+            print(f"Failed to retrieve long-term memory: {e}")
             return []
+    # --- END MODIFICATION ---
     
     def write_longterm(self, player_id: str, npc_id: str, facts: List[dict], timestamp: Optional[str] = None):
-        """将候选 facts 追加写入长期记忆 CSV。"""
+        """Appends candidate facts to the long-term memory CSV."""
+        # (Logic Unchanged)
         with open(self.longterm_path, "a", newline='') as f:
             writer = csv.writer(f)
             for fact in facts:
-                # 确保只写入合规的字典
                 if isinstance(fact, dict):
                     writer.writerow([
                         player_id, 
@@ -76,9 +109,9 @@ class MemoryStore:
                         timestamp or datetime.datetime.now()
                     ])
 
-    # ... (evict_by_policy 和 policy_fn 保持不变) ...
     def evict_by_policy(self, policy_fn):
-        """根据外部策略函数 policy_fn 清理长期记忆。"""
+        """Evicts long-term memories based on an external policy function."""
+        # (Logic Unchanged)
         with open(self.longterm_path, "r", newline='') as f:
             reader = list(csv.DictReader(f))
         retained = [row for row in reader if not policy_fn(row)]
@@ -89,5 +122,6 @@ class MemoryStore:
                 writer.writerow([row["player_id"], row["npc_id"], row["fact"], row["emotion"], row["timestamp"]])
 
     def policy_fn(self, memory_record: dict) -> bool:
-        """示例策略函数：淘汰情绪为 'neutral' 的记忆。"""
+        """Example policy: evict 'neutral' emotions."""
+        # (Logic Unchanged)
         return memory_record["emotion"] == "neutral"
