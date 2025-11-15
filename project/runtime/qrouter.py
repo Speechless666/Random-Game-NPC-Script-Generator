@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 runtime/qrouter_v2.py
-自适应玩家输入预处理/路由（零依赖版）
-- 动态从 data 构建词表；不用预设同义词字典
-- 槽位路由：TF-IDF 余弦，相似度最高者为候选；低置信回落 small_talk
-- 实体/标签解析：对 allowed_entities + lore.entities/tags 做相似度匹配
-- PRF 伪相关反馈：从最相近的 lore 文档中自动提取若干"查询锚点（must seeds）"
-- 输出统一接口供 filters/retriever/controller 使用
+Adaptive player input preprocessing/routing (zero-dependency version)
+- Dynamically builds vocab from data; no preset synonym dicts
+- Slot routing: TF-IDF cosine, highest similarity is candidate; low confidence falls back to small_talk
+- Entity/Tag parsing: Similarity matching against allowed_entities + lore.entities/tags
+- PRF: Auto-extracts "must seeds" from the most similar lore documents
+- Outputs a uniform interface for filters/retriever/controller
 """
 
 from __future__ import annotations
@@ -14,12 +14,11 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple, Iterable
 import json, yaml, re, math
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CACHE_FILE   = PROJECT_ROOT / "runtime" / ".cache" / "compiled.json"
-SLOTS_FILE   = PROJECT_ROOT / "data" / "slots.yaml"
+# --- REMOVED: Hardcoded path globals (PROJECT_ROOT, CACHE_FILE, SLOTS_FILE) ---
+# Data will be passed into the 'prepare' function
 
 # --------------------------
-# Basic text utils (no dict)
+# Basic text utils (Logic Unchanged)
 # --------------------------
 _STOP = set("""
 a an the and or but if while of in on at by for to from with without into onto over under as is are was were be been being
@@ -33,26 +32,26 @@ s am re ve ll d
 
 def _canon(s: str) -> str:
     t = (s or "").lower()
-    t = re.sub(r"[^\w\s]", " ", t)      # 去标点
-    t = re.sub(r"\s+", " ", t).strip()  # 压空白
+    t = re.sub(r"[^\w\s]", " ", t)      # Remove punctuation
+    t = re.sub(r"\s+", " ", t).strip()  # Compress whitespace
     return t
 
 def _tok(s: str) -> List[str]:
+    # (Logic Unchanged)
     t = _canon(s)
     toks = t.split()
-    # 若疑似中文/无空格文本：退化为 2-gram
     if len(toks) <= 1 and len(t) > 4:
         return [t[i:i+2] for i in range(len(t)-1)]
     return toks
 
 def _filter_tokens(toks: Iterable[str]) -> List[str]:
+    # (Logic Unchanged)
     out = []
     for w in toks:
-        if len(w) <= 1:  # 去除极短
+        if len(w) <= 1:
             continue
         if w in _STOP:
             continue
-        # 极简词干（不依赖外部库）
         for suf in ("ing","ed","es","s"):
             if len(w) > len(suf)+2 and w.endswith(suf):
                 w = w[:-len(suf)]
@@ -61,22 +60,21 @@ def _filter_tokens(toks: Iterable[str]) -> List[str]:
     return out
 
 # --------------------------
-# TF-IDF (manual)
+# TF-IDF (manual) (Logic Unchanged)
 # --------------------------
 def _build_tfidf(docs: List[List[str]]) -> Tuple[List[Dict[str,float]], Dict[str,float]]:
-    """输入：每个文档的token列表；输出：每个文档的tfidf向量(稀疏dict)和 idf表"""
+    # (Logic Unchanged)
     N = len(docs)
     df: Dict[str,int] = {}
     for toks in docs:
         for term in set(toks):
             df[term] = df.get(term, 0) + 1
-    idf = {t: math.log((N+1)/(c+0.5)) + 1.0 for t, c in df.items()}  # S-IDF 平滑
+    idf = {t: math.log((N+1)/(c+0.5)) + 1.0 for t, c in df.items()}
     vecs: List[Dict[str,float]] = []
     for toks in docs:
         tf: Dict[str,int] = {}
         for t in toks:
             tf[t] = tf.get(t, 0) + 1
-        # l2 正则化
         v: Dict[str,float] = {}
         for t, f in tf.items():
             v[t] = (1.0 + math.log(f)) * idf.get(t, 0.0)
@@ -87,6 +85,7 @@ def _build_tfidf(docs: List[List[str]]) -> Tuple[List[Dict[str,float]], Dict[str
     return vecs, idf
 
 def _vec(text: str, idf: Dict[str,float]) -> Dict[str,float]:
+    # (Logic Unchanged)
     toks = _filter_tokens(_tok(text))
     tf: Dict[str,int] = {}
     for t in toks: tf[t] = tf.get(t, 0) + 1
@@ -100,6 +99,7 @@ def _vec(text: str, idf: Dict[str,float]) -> Dict[str,float]:
     return v
 
 def _cos(a: Dict[str,float], b: Dict[str,float]) -> float:
+    # (Logic Unchanged)
     if len(a) > len(b): a, b = b, a
     s = 0.0
     for t, wa in a.items():
@@ -108,22 +108,17 @@ def _cos(a: Dict[str,float], b: Dict[str,float]) -> float:
     return s
 
 # --------------------------
-# Load data
+# Load data (REMOVED)
 # --------------------------
-def _load_compiled() -> Dict[str,Any]:
-    data = json.loads(CACHE_FILE.read_text(encoding="utf-8"))
-    return {
-        "allowed_entities": data.get("allowed_entities", []) or [],
-        "lore_public": data.get("lore_public", []) or [],
-    }
-
-def _load_slots() -> Dict[str,Any]:
-    return yaml.safe_load(SLOTS_FILE.read_text(encoding="utf-8")) or {}
+# --- REMOVED _load_compiled() and _load_slots() ---
+# (Data will be passed into 'prepare')
 
 # --------------------------
-# Build corpora (dynamic)
+# Build corpora (Logic Unchanged)
+# (These now take the data as parameters)
 # --------------------------
 def _build_slot_corpus(slots: Dict[str,Any]) -> Tuple[List[str], List[str]]:
+    # (Logic Unchanged)
     names, docs = [], []
     for slot_name, spec in (slots.get("slots") or {}).items():
         desc = " ".join([
@@ -139,6 +134,7 @@ def _build_slot_corpus(slots: Dict[str,Any]) -> Tuple[List[str], List[str]]:
     return names, docs
 
 def _build_entity_tag_corpus(compiled: Dict[str,Any]) -> Tuple[List[str], List[str]]:
+    # (Logic Unchanged)
     ents = list(dict.fromkeys([str(x) for x in compiled["allowed_entities"]]))
     lore_ents, lore_tags = [], []
     for r in compiled["lore_public"]:
@@ -154,6 +150,7 @@ def _build_entity_tag_corpus(compiled: Dict[str,Any]) -> Tuple[List[str], List[s
     return ents, tags
 
 def _build_lore_docs(compiled: Dict[str,Any]) -> Tuple[List[str], List[Dict[str,Any]]]:
+    # (Logic Unchanged)
     texts, rows = [], []
     for r in compiled["lore_public"]:
         txt = " ".join([
@@ -167,10 +164,10 @@ def _build_lore_docs(compiled: Dict[str,Any]) -> Tuple[List[str], List[Dict[str,
     return texts, rows
 
 # --------------------------
-# Phrase extraction utilities
+# Phrase extraction utilities (Logic Unchanged)
 # --------------------------
 def _extract_phrases(text: str, min_length=2, max_length=3) -> List[str]:
-    """提取文本中的短语（连续的n-gram）"""
+    # (Logic Unchanged)
     tokens = _filter_tokens(_tok(text))
     phrases = []
     for n in range(min_length, max_length + 1):
@@ -180,30 +177,27 @@ def _extract_phrases(text: str, min_length=2, max_length=3) -> List[str]:
     return phrases
 
 def _phrase_similarity(user_text: str, phrases: List[str]) -> Dict[str, float]:
-    """计算用户文本与短语列表的相似度"""
+    # (Logic Unchanged)
     user_norm = _canon(user_text)
     scores = {}
     for phrase in phrases:
-        # 简单的短语匹配：如果短语出现在用户文本中，给予较高分数
         if phrase in user_norm:
-            scores[phrase] = 2.0  # 基础分数
-            # 根据短语长度给予额外奖励
+            scores[phrase] = 2.0
             scores[phrase] += len(phrase.split()) * 0.1
     return scores
 
 # --------------------------
-# Enhanced entity recognition
+# Enhanced entity recognition (Logic Unchanged)
 # --------------------------
 def _enhanced_rank_list(cands: List[str], user_text: str, topk=6):
-    """增强的实体识别，支持复合词"""
-    # 为每个候选生成多个变体，提高匹配几率
+    # (Logic Unchanged)
     docs = []
     for c in cands:
         variants = [
             c,
-            c.replace("_", " "),  # black_market → black market
-            c.replace("_", ""),   # black_market → blackmarket
-            " ".join(c.split("_")),  # 如果c是"black_market"
+            c.replace("_", " "),
+            c.replace("_", ""),
+            " ".join(c.split("_")),
         ]
         docs.append(" ".join(variants))
     
@@ -213,43 +207,52 @@ def _enhanced_rank_list(cands: List[str], user_text: str, topk=6):
     scores = []
     for i, c in enumerate(cands):
         s = _cos(q, vecs[i]) if q else 0.0
-        
-        # 如果用户输入直接包含候选词，给予更高分数
         user_norm = _canon(user_text)
         if c in user_norm:
             s += 0.5
-            
         if s > 0.0:
             scores.append((c, s))
     scores.sort(key=lambda x: x[1], reverse=True)
     return scores[:topk]
 
 # --------------------------
-# Public API
+# Public API (MODIFIED)
 # --------------------------
-def prepare(user_text: str) -> Dict[str,Any]:
+def prepare(user_text: str, compiled_data: Dict[str, Any], config: Dict[str, Any]) -> Dict[str,Any]:
     """
+    (MODIFIED: Now accepts compiled_data and config)
     Return:
     {
       text_norm: str,
       slot: str,
       route_confidence: float,
-      must: list[str],          # 若 slot 无 must，则用 PRF 从 lore 里自动选1~2个锚点
-      forbid: list[str],        # 来自 slots.yaml（若有）
-      tags: list[str],          # 基于相似度对齐到的 tags（前若干个）
-      resolved_entities: list[str],  # 基于相似度对齐到的实体（前若干个）
-      prf_terms: list[str],     # PRF 提取的高权重词
-      notes: {slot_rank: [...], entity_matches: [...], tag_matches: [...], prf_sources: [fact_ids...] }
+      must: list[str],
+      forbid: list[str],
+      tags: list[str],
+      resolved_entities: list[str],
+      prf_terms: list[str],
+      notes: { ... }
     }
     """
     user_text = user_text or ""
     text_norm = _canon(user_text)
 
-    compiled = _load_compiled()
-    slots    = _load_slots()
+    # --- MODIFIED: Load data from parameters, not files ---
+    # compiled = _load_compiled()  <-- REMOVED
+    slot_rules = compiled_data.get('slot_rules', {})
+    # --- END MODIFICATION ---
+
+    # --- MODIFIED: Load thresholds from config ---
+    thresholds_config = config.get('thresholds', {})
+    fallback_threshold = thresholds_config.get('qrouter_fallback_threshold', 0.15)
+    fallback_new_conf = thresholds_config.get('qrouter_fallback_new_conf', 0.35)
+    prf_score_threshold = thresholds_config.get('qrouter_prf_score_threshold', 0.3)
+    prf_phrase_weight = thresholds_config.get('qrouter_prf_phrase_weight', 0.7)
+    must_decision_threshold = thresholds_config.get('qrouter_must_decision_threshold', 0.35)
+    # --- END MODIFICATION ---
 
     # --- 1) SLOT ROUTING (TF-IDF on slot docs) ---
-    slot_names, slot_docs = _build_slot_corpus(slots)
+    slot_names, slot_docs = _build_slot_corpus(slot_rules) # <-- MODIFIED
     slot_docs_tok = [_filter_tokens(_tok(d)) for d in slot_docs]
     slot_vecs, slot_idf = _build_tfidf(slot_docs_tok)
     qv = _vec(user_text, slot_idf)
@@ -257,30 +260,30 @@ def prepare(user_text: str) -> Dict[str,Any]:
     sims.sort(key=lambda x: x[1], reverse=True)
     best_slot, best_score = sims[0]
     second = sims[1][1] if len(sims) > 1 else 0.0
-    # 置信度：top 与次优的 margin（0..1）
     margin = max(0.0, best_score - second)
     route_conf = max(best_score, margin)
     
-    # 低置信度回退
-    if route_conf < 0.15:
-        best_slot, route_conf = "small_talk", 0.35
+    # Low confidence fallback
+    # --- MODIFIED: Use config threshold ---
+    if route_conf < fallback_threshold:
+        best_slot, route_conf = "small_talk", fallback_new_conf
+    # --- END MODIFICATION ---
 
-    slot_def = (slots.get("slots") or {}).get(best_slot, {}) or {}
+    slot_def = (slot_rules.get("slots") or {}).get(best_slot, {}) or {} # <-- MODIFIED
     base_must   = [ _canon(x) for x in (slot_def.get("must") or []) if str(x).strip() ]
     base_forbid = [ _canon(x) for x in (slot_def.get("forbid") or []) if str(x).strip() ]
 
     # --- 2) ENTITY/TAG RESOLUTION (TF-IDF similarity over candidate list) ---
-    ents, tags = _build_entity_tag_corpus(compiled)
+    ents, tags = _build_entity_tag_corpus(compiled_data) # <-- MODIFIED
 
-    # 使用增强的实体识别
     ent_rank = _enhanced_rank_list(ents, user_text, topk=6)
     tag_rank = _enhanced_rank_list(tags, user_text, topk=6)
 
     resolved_entities = [c for c,_ in ent_rank[:5]]
     resolved_tags     = [c for c,_ in tag_rank[:5]]
 
-    # --- 3) PRF: 从最相近 lore 文档自动抽"查询锚点" ---
-    lore_texts, lore_rows = _build_lore_docs(compiled)
+    # --- 3) PRF: Auto-extract "must seeds" from most similar lore docs ---
+    lore_texts, lore_rows = _build_lore_docs(compiled_data) # <-- MODIFIED
     prf_terms: List[str] = []
     prf_sources: List[str] = []
     
@@ -293,28 +296,27 @@ def prepare(user_text: str) -> Dict[str,Any]:
         topk = [i for i, s in lsims[:5] if s > 0.0]
         prf_sources = [str(lore_rows[i].get("fact_id") or i) for i in topk]
         
-        # 汇总 top-k 文档里的高权重词
         acc: Dict[str, float] = {}
         for i in topk:
-            # 提取单个词
             for t, w in lvecs[i].items():
                 if t in _STOP or len(t) <= 2: 
                     continue
                 acc[t] = acc.get(t, 0.0) + w
             
-            # 提取短语（仅在单个词匹配置信度低时启用）
-            if best_score < 0.3:  # 平衡策略1：置信度阈值
+            # --- MODIFIED: Use config threshold ---
+            if best_score < prf_score_threshold:
+            # --- END MODIFICATION ---
                 phrases = _extract_phrases(lore_texts[i])
                 phrase_scores = _phrase_similarity(user_text, phrases)
                 for phrase, score in phrase_scores.items():
                     acc[phrase] = acc.get(phrase, 0.0) + score
         
-        # 平衡策略2：给短语匹配合理的权重
         prf_candidates = []
         for term, score in acc.items():
-            # 如果是短语，适当降低权重，避免完全覆盖单个词匹配
-            if ' ' in term:  # 短语包含空格
-                adjusted_score = score * 0.7  # 短语权重系数
+            if ' ' in term:
+                # --- MODIFIED: Use config weight ---
+                adjusted_score = score * prf_phrase_weight
+                # --- END MODIFICATION ---
             else:
                 adjusted_score = score
             prf_candidates.append((term, adjusted_score))
@@ -322,10 +324,12 @@ def prepare(user_text: str) -> Dict[str,Any]:
         prf_candidates.sort(key=lambda x: x[1], reverse=True)
         prf_terms = [term for term, _ in prf_candidates[:6]]
 
-    # --- 4) 组装 must/tags ---
+    # --- 4) Assemble must/tags ---
     must_final: List[str] = list(base_must)
-    if best_slot == "small_talk" or route_conf < 0.35:
-        pass  # 保持 must_final 为空
+    # --- MODIFIED: Use config threshold ---
+    if best_slot == "small_talk" or route_conf < must_decision_threshold:
+    # --- END MODIFICATION ---
+        pass
     else:
         if not must_final:
             if resolved_entities:
@@ -354,18 +358,37 @@ def prepare(user_text: str) -> Dict[str,Any]:
     return out
 
 # --------------------------
-# Self-test
+# Self-test (MODIFIED)
 # --------------------------
 if __name__ == "__main__":
     print("[qrouter_v2] self-test…")
+    print("WARNING: This test now requires a valid 'compiled.json' and 'config.yaml'")
     try:
+        # --- MODIFIED: Self-test must now load config and compiled data ---
+        _PROJECT_ROOT = Path(__file__).resolve().parents[1]
+        _CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
+        with _CONFIG_PATH.open("r", encoding="utf-8") as f:
+            _config = yaml.safe_load(f)
+        
+        _CACHE_DIR_STR = _config.get('app', {}).get('cache_dir', 'runtime/.cache')
+        _COMPILED_PATH = _PROJECT_ROOT / _CACHE_DIR_STR / "compiled.json"
+        with _COMPILED_PATH.open("r", encoding="utf-8") as f:
+            _compiled = json.load(f)
+        
+        print(f"Loaded config from: {_CONFIG_PATH}")
+        print(f"Loaded compiled data from: {_COMPILED_PATH}")
+        # --- END MODIFICATION ---
+
         for txt in [
             "what's new in the market?",
             "any news from the marketplace guild?",
             "tell me about patrol shifts near the east gate",
             "hi there, how's your day?",
         ]:
-            r = prepare(txt)
+            # --- MODIFIED: Pass data into prepare ---
+            r = prepare(txt, compiled_data=_compiled, config=_config)
+            # --- END MODIFICATION ---
             import pprint; print("\n---", txt, "---"); pprint.pp(r, width=110, compact=False)
     except Exception as e:
         print("[qrouter_v2] ERROR:", e)
+        print("This may be due to missing config.yaml or compiled.json")
