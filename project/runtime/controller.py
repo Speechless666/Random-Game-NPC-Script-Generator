@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-runtime/controller.py — 完整的管线编排器
-(已更新：包含记忆管线)
+runtime/controller.py — The complete pipeline orchestrator
+(MODIFIED: Added 'memory_path' to run_once signature)
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import traceback
 import datetime
 
 # -----------------------------
-# Robust imports (已修复)
+# Robust imports (Unchanged)
 # -----------------------------
 try:
     from runtime import qrouter as qrouter
@@ -25,17 +25,14 @@ try:
     except Exception:
         filters_mod = None
         HAS_FILTERS = False
-    from runtime.config import SETTINGS
     
     from provider.generator import Generator
     from provider.oocChecker import OOCChecker
-    # --- 新增：导入记忆模块 ---
     from provider.memory_store import MemoryStore
     from provider.memory_summarizer import MemorySummarizer
-    # --- 结束新增 ---
 
 except ImportError as e:
-    print(f"导入失败: {e}")
+    print(f"Import failed: {e}")
     THIS = Path(__file__).resolve()
     PROJECT_ROOT = THIS.parents[1]
     if str(PROJECT_ROOT) not in sys.path:
@@ -50,47 +47,32 @@ except ImportError as e:
     except Exception:
         filters_mod = None
         HAS_FILTERS = False
-    from runtime.config import SETTINGS
+    
     from provider.generator import Generator
     from provider.oocChecker import OOCChecker
-    # --- 新增：导入记忆模块 ---
     from provider.memory_store import MemoryStore
     from provider.memory_summarizer import MemorySummarizer
-    # --- 结束新增 ---
 
-
-# ... (Paths, Demo data, load_compiled, run_filters_guard, get_npc_profile 保持不变) ...
-# (我们假设它们在这里)
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-CACHE_DIR    = PROJECT_ROOT / "runtime" / ".cache"
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-COMPILED_PATH = CACHE_DIR / "compiled.json"
-def load_compiled():
-    # ( ... 完整函数 ... )
-    if COMPILED_PATH.exists():
-        try:
-            return json.loads(COMPILED_PATH.read_text(encoding="utf-8"))
-        except Exception as e:
-            print("[controller] ERROR: compiled.json parse error:", e, file=sys.stderr)
-            if SETTINGS.PRODUCTION or SETTINGS.STRICT_COMPILED: raise
-    if SETTINGS.ALLOW_DEMO:
-        print("[controller] WARN: compiled.json missing — using DEMO data (DEV only).", file=sys.stderr)
-        return {
-            "allowed_entities": [], "lore_public": [], "npc": [],
-            "emotion_schema_runtime": emotion_engine.DEFAULT_SCHEMA,
-        }
-    raise RuntimeError("compiled.json not found.")
-
-def run_filters_guard(user_text: str, npc_id: Optional[str], compiled: Dict[str, Any]):
-    if not HAS_FILTERS: return None
+# --- MODIFIED: load_compiled (Unchanged from last step) ---
+def load_compiled(config: Dict[str, Any], project_root: Path):
+    """
+    Loads the compiled.json cache file using the path from the config.
+    """
     try:
-        fn = getattr(filters_mod, "precheck_guardrails", None)
-        if callable(fn): return fn(user_text=user_text, npc_id=npc_id)
-        fn2 = getattr(filters_mod, "apply", None)
-        if callable(fn2): return fn2(user_text=user_text, npc_id=npc_id)
-    except Exception as e: print("[controller] filters invocation failed:", e, file=sys.stderr)
-    return None
+        cache_dir_str = config.get('app', {}).get('cache_dir', 'runtime/.cache')
+        compiled_path = project_root / cache_dir_str / "compiled.json"
+        
+        if compiled_path.exists():
+            return json.loads(compiled_path.read_text(encoding="utf-8"))
+        else:
+            print(f"[controller] ERROR: compiled.json missing at: {compiled_path}", file=sys.stderr)
+            raise RuntimeError(f"compiled.json not found at {compiled_path}")
+            
+    except Exception as e:
+        print(f"[controller] ERROR: compiled.json parse error: {e}", file=sys.stderr)
+        raise
 
+# --- get_npc_profile (Logic Unchanged) ---
 def get_npc_profile(npc_id: str, compiled_data: Dict[str, Any]):
     npcs = compiled_data.get('npc', [])
     for npc in npcs:
@@ -101,10 +83,9 @@ def get_npc_profile(npc_id: str, compiled_data: Dict[str, Any]):
         "baseline_emotion": "neutral", "emotion_range": ["neutral"],
         "speaking_style": "formal", "style_emotion_map": {}
     }
-# ... (以上是保持不变的辅助函数) ...
 
 # ----------------------------
-# Single-turn pipeline (已修改)
+# Single-turn pipeline (MODIFIED)
 # ----------------------------
 def run_once(
     user_text: str, 
@@ -112,65 +93,74 @@ def run_once(
     generator: Generator,
     ooc_checker: OOCChecker,
     compiled_data: Dict[str, Any],
-    # --- 新增参数 ---
+    config: Dict[str, Any], 
     memory_store: MemoryStore,
     memory_summarizer: MemorySummarizer,
-    player_id: str = "P001", # 假设一个默认 Player ID
-    # --- 结束新增 ---
+    # --- MODIFIED: Added 'memory_path' argument ---
+    memory_path: str, 
+    # --- END MODIFICATION ---
+    player_id: str = "P001",
     last_emotion: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    执行完整的单轮对话管线 (包含记忆)。
+    Executes the full single-turn dialogue pipeline (including memory).
     """
     
     out: Dict[str, Any] = {
         "user_text": user_text,
         "npc_id": npc_id,
-        "player_id": player_id, # <-- 新增
+        "player_id": player_id,
         "slot": "default",
         "final_text": "I'm not sure what to say.",
         "final_emotion": "neutral",
         "audit": {
             "router": {}, "filters": {}, "retriever": {},
             "emotion_pre": {}, "generation": {}, "ooc_check": {},
-            # --- 新增审计 ---
             "memory": {"events_added": 0, "facts_written": 0, "facts": []}
-            # --- 结束新增 ---
         }
     }
 
     try:
-        # --- (1) 路由 (Phase 1) ---
-        q = qrouter.prepare(user_text)
+        # --- (1) Routing (MODIFIED) ---
+        q = qrouter.prepare(user_text, compiled_data=compiled_data, config=config)
         out["audit"]["router"] = q
         slot_name = q["slot"]
         out["slot"] = slot_name
 
-        # --- (2) 过滤 (Phase 2) ---
-        filt = run_filters_guard(user_text, npc_id, compiled_data)
+        # --- (2) Filtering (MODIFIED) ---
+        filt = filters_mod.precheck_guardrails(
+            user_text, npc_id, compiled_data=compiled_data, config=config
+        )
         out["audit"]["filters"] = filt
         if isinstance(filt, dict) and (not filt.get("allow", True)):
             out["final_text"] = filt.get("reply") or "Sorry, I can’t speak to that."
             out["final_emotion"] = "serious"
-            # (注意：即使被过滤，我们仍然应该记录这个交互)
-            # return out # <-- 不再提前返回
 
-        # --- (3) 检索 (Phase 2) ---
-        # ( ... 检索逻辑 ... )
+        # --- (3) Retrieval (MODIFIED) ---
         compiled_lore_public = compiled_data.get("lore_public") or []
         slot_hints = {"must": q["must"], "forbid": q["forbid"], "tags": q.get("tags", [])}
         route_conf = q.get("route_confidence", 0.0)
-        require_slot_must = (slot_name not in ["small_talk", "past_story"]) and (route_conf >= 0.35)
+        
+        route_threshold = config.get('thresholds', {}).get('router_fallback_confidence', 0.35)
+        require_slot_must = (slot_name not in ["small_talk", "past_story"]) and (route_conf >= route_threshold)
+        
+        # --- MODIFIED: Pass 'config' and 'memory_path' ---
         r = retriever.retrieve_public_evidence(
-            user_text=q["text_norm"], npc_id=npc_id, slot_hints=slot_hints,
-            slot_name=slot_name, require_slot_must=require_slot_must,
+            user_text=q["text_norm"],
+            config=config,
+            memory_path=memory_path, # <-- Now this variable exists
+            npc_id=npc_id, 
+            slot_hints=slot_hints,
+            slot_name=slot_name, 
+            require_slot_must=require_slot_must,
             compiled_lore_public=compiled_lore_public,
         )
+        # --- END MODIFICATION ---
+        
         out["audit"]["retriever"] = r
         evidence = r.get("evidence", []) if isinstance(r, dict) else []
    
-        # --- (4) 情绪 Pre-Hint (Phase 2) ---
-        # ( ... 情绪逻辑 ... )
+        # --- (4) Emotion Pre-Hint (MODIFIED) ---
         npc_profile = get_npc_profile(npc_id, compiled_data)
         emotion_schema = compiled_data.get('emotion_schema_runtime', emotion_engine.DEFAULT_SCHEMA)
         slot_tone_bias = emotion_schema.get('slot_prior', {}).get(slot_name, {"neutral": 1.0})
@@ -179,23 +169,24 @@ def run_once(
             "last_emotion": last_emotion, "npc_profile": npc_profile,
             "emotion_schema": emotion_schema, "slot_tone_bias": {slot_name: slot_tone_bias}
         }
-        pre = emotion_engine.pre_hint(emo_ctx)
+        # --- MODIFIED: Pass 'config' ---
+        pre = emotion_engine.pre_hint(emo_ctx, config=config)
+        # --- END MODIFICATION ---
+        
         out["audit"]["emotion_pre"] = pre
 
-        # --- (5) 真实生成 (Phase 3) ---
-        # ( ... 生成逻辑 ... )
+        # --- (5) Real Generation (Unchanged from last step) ---
         persona = f"{npc_profile.get('name', npc_id)} - {npc_profile.get('speaking_style', 'default style')}"
-        #将短期记忆加入生成上下文
-        short_memories = memory_store.get_short_window(k=10)
-        #根据Npc ID 和 Player ID 获取相关短期记忆
+        
+        short_mem_k = config.get('memory_policy', {}).get('short_window_k', 10)
+        short_memories = memory_store.get_short_window(k=short_mem_k)
+        
         selected_memories = [m for m in short_memories if m['npc_id'] == npc_id and m['player_id'] == player_id]
         context_lines = [f"{m['speaker']}({m['player_id'] if m['speaker'] == 'player' else m['npc_id']}): {m['text']} (Emotion:{m['emotion']})" for m in selected_memories]
-        # context_lines.reverse()
-        print("短期记忆上下文:", context_lines)
+        print("Short-term memory context:", context_lines)
         ctx = f"User asked: '{q['text_norm']}'\nRecent Dialogue History:\n" + "\n".join(context_lines)
         candidates = generator.generate_candidates(ctx, persona, n=2, evidence=evidence)
         
-        # 如果被过滤器拦下，这里就不生成
         if isinstance(filt, dict) and (not filt.get("allow", True)):
              draft_text = filt.get("reply") or "Sorry, I can’t speak to that."
              draft_emotion = "serious"
@@ -211,8 +202,7 @@ def run_once(
             draft_emotion = best_candidate.get('draft', {}).get('meta', {}).get('sentiment', 'neutral')
             draft_meta = best_candidate.get('draft', {}).get('meta', {})
         
-        # --- (6) OOC 检查 (Phase 3) ---
-        # ( ... OOC 逻辑 ... )
+        # --- (6) OOC Check (Unchanged) ---
         draft_json_for_ooc = {"text": draft_text, "emotion": draft_emotion, "meta": draft_meta}
         ooc_result = ooc_checker.judge_ooc(ctx, draft_json_for_ooc)
         out["audit"]["ooc_check"] = ooc_result
@@ -220,52 +210,42 @@ def run_once(
         out["final_text"] = ooc_result.get("text", draft_text) 
         out["final_emotion"] = ooc_result.get("emotion", draft_emotion)
 
-        # --- (7) 记忆管线 (Phase 3) ---
+        # --- (7) Memory Pipeline (Unchanged from last step) ---
         try:
-            # 1. 记录用户事件
             user_event = {
-                "speaker": "player", 
-                "text": user_text, 
-                "emotion": None, # (我们通常不分析玩家情绪)
-                "player_id": player_id, 
-                "npc_id": npc_id,
+                "speaker": "player", "text": user_text, "emotion": None,
+                "player_id": player_id, "npc_id": npc_id,
                 "timestamp": datetime.datetime.now()
             }
             memory_store.append_event(user_event)
             
-            # 2. 记录 NPC 事件
             npc_name = npc_profile.get("name", npc_id) or "npc"
             npc_event = {
-                "speaker": npc_name, 
-                "text": out["final_text"], 
-                "emotion": out["final_emotion"],
-                "player_id": player_id,
-                "npc_id": npc_id,
+                "speaker": npc_name, "text": out["final_text"], "emotion": out["final_emotion"],
+                "player_id": player_id, "npc_id": npc_id,
                 "timestamp": datetime.datetime.now()
             }
             memory_store.append_event(npc_event)
             out["audit"]["memory"]["events_added"] = 2
 
-            # 3. 尝试总结
-            # (注意: 在真实应用中，这可能不会每轮都跑，而是异步或N轮一次)
             recent_history = memory_store.get_short_window()
-            print("Recent history:", recent_history[len(recent_history)-2:])  # 仅打印最近2条以避免过长
+            print("Recent history:", recent_history[len(recent_history)-2:])
 
-            facts_to_write = memory_summarizer.summarize(1, [user_event, npc_event], slot=slot_name)
+            summarize_batch = config.get('memory_policy', {}).get('summarize_batch_size', 1)
+            facts_to_write = memory_summarizer.summarize(summarize_batch, [user_event, npc_event], slot=slot_name)
             
             if facts_to_write:
-                # 4. 写入长期记忆
                 memory_store.write_longterm(player_id, npc_id, facts_to_write)
                 out["audit"]["memory"]["facts_written"] = len(facts_to_write)
                 out["audit"]["memory"]["facts"] = facts_to_write
         except Exception as e:
-            print(f"❌ [controller.run_once] 记忆管线失败: {e}")
+            print(f"❌ [controller.run_once] Memory pipeline failed: {e}")
             traceback.print_exc()
 
         return out
         
     except Exception as e:
-        print(f"❌ [controller.run_once] 管线执行失败: {e}")
+        print(f"❌ [controller.run_once] Pipeline execution failed: {e}")
         traceback.print_exc()
         out["final_text"] = "I'm sorry, I seem to have lost my train of thought."
         out["final_emotion"] = "sad"
