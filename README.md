@@ -76,6 +76,7 @@ Or you can make use of app.py to setup servers so as to connect to your own appl
 ![Demo](https://github.com/Speechless666/Random-Game-NPC-Script-Generator/blob/main/doc/demofront.png)
 
 Do run /runtime/compile_data.py manually after you eidted npc and lore.csv
+
 Run start.bat for windows and start.sh for Mac
 ---
 
