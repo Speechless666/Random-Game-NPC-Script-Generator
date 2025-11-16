@@ -52,6 +52,7 @@ provider:
   model: gemini-2.5-flash
 ```
 Choose the api you want to use, remember to set keys as system environment variable
+
 The api key name for each models are : GEMINI_API_KEY, OPENAI_API_KEY, QWEN_API_KEY
 
 You can also adjust other config settings such as threshold acoording to the citations
@@ -59,11 +60,13 @@ You can also adjust other config settings such as threshold acoording to the cit
 ## 4. Filling NPC and Lore information
 
 Fill up npc.csv and lore.csv under project/data
+
 run compile_data.py manually to compile the dataset
 
 ## 5. Try testing or implement using app.py
 
 You can try project/test.py for testing all functions 
+
 Or you can make use of app.py to setup servers so as to connect to your own applications. 
 
 ---
