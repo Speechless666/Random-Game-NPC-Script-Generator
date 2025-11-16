@@ -129,11 +129,11 @@ Also assigns style hooks.
 ---
 
 # 🌐 Demo
-- Try with Demo using StarstewVally as example dataset!
+- Try with Demo using StarstewValley as example dataset!
 
 ![Demo](https://github.com/Speechless666/Random-Game-NPC-Script-Generator/blob/main/doc/demofront.png)
 
-Do run /runtime/compile_data.py
+Do run /runtime/compile_data.py manually after you eidted npc and lore.csv
 ---
 
 # 🔬 Evaluation Summary
