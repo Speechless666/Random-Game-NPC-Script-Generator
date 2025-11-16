@@ -71,7 +71,8 @@ Or you can make use of app.py to setup servers so as to connect to your own appl
 # 🧠 Core Components
 
 ```markdown
-![Pipeline](https://github.com/Speechless666/Random-Game-NPC-Script-Generator/blob/main/doc/pipeline.jpg)
+![Pipeline](https://raw.githubusercontent.com/Speechless666/Random-Game-NPC-Script-Generator/main/project/doc/pipeline.png)
+
 ```
 
 ## 1. Slot Routing (`qrouter.py`)
@@ -132,7 +133,7 @@ Also assigns style hooks.
 # 🌐 Demo
 - Try with Demo using StarstewVally as example dataset!
 ```markdown
-![Demo](https://github.com/Speechless666/Random-Game-NPC-Script-Generator/blob/main/doc/demofront.png)
+![Demo](https://raw.githubusercontent.com/Speechless666/Random-Game-NPC-Script-Generator/main/project/doc/demofront.png)
 ```
 Do run /runtime/compile_data.py
 ---
