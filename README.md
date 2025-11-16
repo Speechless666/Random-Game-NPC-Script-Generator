@@ -78,6 +78,7 @@ Or you can make use of app.py to setup servers so as to connect to your own appl
 Do run /runtime/compile_data.py manually after you eidted npc and lore.csv
 
 Run start.bat for windows and start.sh for Mac
+
 ---
 
 # 🧠 Core Components
