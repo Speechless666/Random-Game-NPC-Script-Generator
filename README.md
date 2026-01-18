@@ -17,6 +17,12 @@ This repository implements a controllable NPC dialogue engine. Each NPC:
 - Generates **multiple candidates**, ranks them, and checks for OOC violations.
 - Updates **short-term** & **long-term memory** after each turn.
 
+## 📄 Written Report
+
+A detailed written report explaining the system design, methodology, and implementation decisions is available here:
+
+👉 [Written Report (PDF)](https://github.com/zhijing31/Random-Game-NPC-Script-Generator/blob/main/Report.pdf)
+
 ---
 
 # 🚀 Getting Started
