@@ -21,7 +21,7 @@ This repository implements a controllable NPC dialogue engine. Each NPC:
 
 A detailed written report explaining the system design, methodology, and implementation decisions is available here:
 
-👉 [Written Report (PDF)](https://github.com/zhijing31/Random-Game-NPC-Script-Generator/blob/main/Report.pdf)
+👉 [Written Report (PDF)](https://github.com/Speechless666/Random-Game-NPC-Script-Generator/blob/main/Report.pdf)
 
 ---
 
